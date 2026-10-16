@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Copy to .orchestration/hooks/worktree-env and customize to isolate DB/schema/ports/cache.
+set -euo pipefail
+wt=${1:?worktree path}; plan=${2:?plan id}
+printf 'configure external resources for %s (%s)\n' "$wt" "$plan"

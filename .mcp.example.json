@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "code-search": {
+      "command": "<your-code-graph-or-semantic-search-mcp>",
+      "args": []
+    }
+  }
+}

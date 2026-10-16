@@ -1,0 +1,13 @@
+[features]
+hooks = true
+
+# GSD-HERDR-PEER-CONFIG:BEGIN
+[agents]
+enabled = false
+max_concurrent_threads_per_session = 1
+max_depth = 0
+
+[features.multi_agent_v2]
+enabled = false
+max_concurrent_threads_per_session = 1
+# GSD-HERDR-PEER-CONFIG:END

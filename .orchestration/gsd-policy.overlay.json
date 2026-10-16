@@ -1,0 +1,34 @@
+{
+  "runtime": "claude",
+  "model_profile": "adaptive",
+  "parallelization": true,
+  "planning": {
+    "commit_docs": true
+  },
+  "workflow": {
+    "research": false,
+    "plan_check": false,
+    "verifier": true,
+    "code_review": false,
+    "node_repair": true,
+    "node_repair_budget": 1,
+    "context_guard_mode": "warn",
+    "use_worktrees": true,
+    "compact_content": true
+  },
+  "models": {
+    "planning": "opus",
+    "execution": "sonnet",
+    "verification": "sonnet",
+    "research": "sonnet"
+  },
+  "effort": {
+    "default": "medium",
+    "agent_overrides": {
+      "gsd-executor": "medium",
+      "gsd-code-fixer": "high",
+      "gsd-debugger": "high"
+    }
+  },
+  "mode": "interactive"
+}

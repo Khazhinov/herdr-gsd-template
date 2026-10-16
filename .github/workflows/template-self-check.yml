@@ -1,0 +1,41 @@
+name: template-self-check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-template-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install test dependency
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Run offline template suite
+        run: ./scripts/test-template.sh
+
+  gsd-installer-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned GSD into Claude project surface
+        shell: bash
+        run: |
+          source .orchestration/versions.env
+          npx --yes "@opengsd/gsd-core@$GSD_VERSION" --claude --local
+
+      - name: Reconcile starter-owned protocol block
+        run: ./scripts/reconcile-runtime-config.py
+
+      - name: Validate resulting repository
+        run: ./scripts/self-check.sh --offline
