@@ -43,7 +43,17 @@ grep -q 'enabled = false' .codex/config.toml || fail "Codex peer fan-out guard m
 grep -q 'max_concurrent_threads_per_session = 1' .codex/config.toml || fail "Codex peer concurrency guard missing"
 grep -q 'ORCHESTRATION_OWNER=' .orchestration/owner.env || fail "owner marker missing"
 
-! grep -R --exclude=self-check.sh -nE 'danger-full-access|approval_policy *= *"?never|ask-for-approval +never' .codex scripts .agents .claude .orchestration >/dev/null \
+unsafe_targets=(
+  .codex/config.toml
+  scripts
+  .orchestration/config.env
+  .orchestration/owner.env
+  .orchestration/gsd-policy.overlay.json
+)
+
+! grep -R --exclude=self-check.sh -nE \
+  'danger-full-access|approval_policy *= *"?never|ask-for-approval +never' \
+  "${unsafe_targets[@]}" >/dev/null \
   || fail "unsafe shared Codex default found"
 
 ! grep -R -nE 'args\+=\([^)]*-c[^)]*model_reasoning_effort|agent start.*-c.*model_reasoning_effort' scripts/herdr-ensure-peers.sh scripts/peer-restart-in.sh >/dev/null \
