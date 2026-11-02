@@ -12,7 +12,7 @@ echo "== overlay =="
 echo "== reconcile =="
 python3 ./tests/test_reconcile.py
 
-echo "== worktree lifecycle (mock Herdr) =="
-./tests/test_worktree_lifecycle.sh
+echo "== routing, quotas, worker lifecycle (fake herdr-core) =="
+python3 ./tests/test_orch.py
 
 echo "template test suite: PASS"

@@ -1,11 +1,11 @@
-# Peer report
+# Report <id>
 
 ## Findings
 | # | Artifact / code | Finding | Evidence | Severity | Proposed action |
 |---|---|---|---|---|---|
 
-## Commits
-| Commit | Purpose |
+## Changes
+| Path | Purpose |
 |---|---|
 
 ## Verification

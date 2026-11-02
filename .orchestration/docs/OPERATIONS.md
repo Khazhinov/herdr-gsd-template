@@ -1,89 +1,62 @@
-# Operations
+# Эксплуатация
 
-## Start
+## 1. Команды
 
-```bash
-cd <repo>
-./scripts/doctor.sh
-herdr
+| Команда | Назначение |
+|---|---|
+| `orch.py quota [--refresh]` | квоты всех агентов с источником и достоверностью |
+| `orch.py route <role> [--heavy\|--light]` | пробный выбор агента с причиной |
+| `orch.py prefer <role> <agent\|->` | ручное переопределение следующего выбора (снимается `-`) |
+| `orch.py dispatch <task.md> --role <r> --id <id>` | запуск воркера; `execute` получает worktree |
+| `orch.py wait [--timeout S]` | ожидание события воркеров |
+| `orch.py collect <id> [--keep-worker]` | проверка доказательств, коммит worktree, остановка воркера |
+| `orch.py worktree merge\|remove\|path <id>` | слияние или отказ от ветки `orch/<id>` |
+| `orch.py status [--json]` | снимок состояния |
+| `orch.py hub start\|stop` | публикатор для Herdr App в отдельном терминале |
+| `orch.py watch` | тот же публикатор с выводом дашборда в текущий терминал |
+| `orch.py tools`, `orch.py tool-ask <module> "<запрос>"` | tool-агенты хаба |
+
+## 2. Локальные переопределения
+
+`.orchestration/agents.local.toml` и `.orchestration/routing.local.toml` не коммитятся и сливаются поверх
+основных файлов. Пример: модель и уровень рассуждения Codex, статический бюджет агента без зонда квоты.
+
+```toml
+[agents.codex]
+command = ["codex", "--no-daemon", "-m", "<model>", "-c", "model_reasoning_effort=high"]
+
+[agents.kimi]
+stability = "supported"          # после smoke-теста
+quota = "static"
+quota_static = {remaining_percent = 100}
 ```
 
-In the first/root pane:
+## 3. Воркер ждёт человека
 
-```bash
-claude
-```
+`dispatch` сообщает `startup.ok: false`, если агент не сообщил статус за 25 с. Типичные причины:
+диалог доверия к корню проекта (первый запуск агента в проекте), вход в учётную запись.
+Ответ даёт человек в Herdr App или через `hc attach w-<id>`. Владелец не нажимает клавиши за человека.
 
-Recommended first prompt:
+Статус `blocked` во время работы означает запрос разрешения. Он виден в App, дашборде и в ответе `orch.py wait`.
 
-```text
-Initialize this repository according to .claude/CLAUDE.md.
-Verify versions, ensure Codex peer-review/peer-code/peer-exec exist,
-show peer states and Codex quota estimate, then stop and wait for my GSD command.
-```
+## 4. Восстановление после перезапуска
 
-## Ensure peers
+- Сессия владельца: `orch.py status` показывает незавершённые задачи; `collect` по каждой.
+- Перезагрузка машины или ядра: herdr-core не возобновляет агентов. Задача без живого терминала и без
+  отчёта получает `incomplete` в `collect`; worktree и ветка остаются для ручного разбора.
+- `hub` перезапускается командой `orch.py hub start`.
 
-```bash
-./scripts/herdr-ensure-peers.sh
-./scripts/peer-status.sh
-```
+## 5. Передача роли владельца
 
-## Dispatch
+1. Безопасная граница: всё закоммичено, решения по ревью записаны, нет задач в состоянии `running`.
+2. Установить GSD для нового владельца официальным установщиком (`npx @opengsd/gsd-core@<pin> --<runtime> --local`).
+3. Пересмотреть защитный блок `.codex/config.toml`, если владельцем становится Codex.
+4. Изменить `owner` в `routing.toml` отдельным коммитом.
+5. Новый владелец восстанавливается по `.planning/`, `docs/orch/`, Git.
 
-```bash
-cp .orchestration/templates/peer-task.md /tmp/task.md
-# edit task contract
-./scripts/peer-dispatch.sh peer-review /tmp/task.md
-./scripts/peer-watch.sh peer-review docs/peer/review.md
-```
+Возможность быть владельцем подтверждается тестом в целевой среде, а не предполагается.
 
-Do not blindly resend after a timeout/stalled lifecycle signal.
-Inspect:
+## 6. Внешние ресурсы worktree
 
-```bash
-herdr agent get peer-review
-herdr agent read peer-review --source recent-unwrapped --lines 120
-```
-
-## Heavy execution eligibility
-
-```bash
-./scripts/codex-limits.py --threshold "${CODEX_HEAVY_THRESHOLD:-30}"
-```
-
-Exit:
-- `0`: heavy scheduling allowed;
-- `1`: short work only;
-- `2`: telemetry unavailable; automatic heavy routing disabled.
-
-## Worktree
-
-```bash
-wt=$(./scripts/peer-worktree.sh create 01-02)
-./scripts/peer-worktree.sh enter 01-02
-# dispatch execution contract with $wt
-./scripts/peer-worktree.sh merge 01-02
-```
-
-`merge/remove` return `peer-exec` to root before worktree deletion.
-
-## Blocked peer
-
-```bash
-herdr agent get peer-exec
-herdr agent read peer-exec --source recent-unwrapped --lines 120
-```
-
-Never auto-answer approval/security dialogs.
-
-## GSD upgrade
-
-```bash
-# edit .orchestration/versions.env first
-./scripts/bootstrap.sh
-./scripts/self-check.sh --offline
-./scripts/doctor.sh
-```
-
-Then run a real Herdr peer smoke test and worktree lifecycle before publishing the bump.
+Скопировать `.orchestration/hooks/worktree-env.example` в `.orchestration/hooks/worktree-env`, сделать исполняемым
+и настроить изоляцию БД, портов и кэшей. Хук вызывается после создания каждого worktree.

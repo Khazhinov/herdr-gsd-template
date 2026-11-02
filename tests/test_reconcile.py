@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-import shutil, subprocess, tempfile
+import json, shutil, subprocess, tempfile
 from pathlib import Path
 
 source = Path(__file__).resolve().parents[1]
+IGNORE = shutil.ignore_patterns('.git', 'runtime', 'worktrees', '__pycache__')
 
 with tempfile.TemporaryDirectory() as td:
     root = Path(td) / "repo"
-    shutil.copytree(source, root)
+    shutil.copytree(source, root, ignore=IGNORE)
     (root / ".claude/CLAUDE.md").write_text("# GSD generated content\n")
 
     # A manually merged config has the starter marker plus unrelated settings.
@@ -31,10 +32,23 @@ with tempfile.TemporaryDirectory() as td:
     assert 'foo = "bar"' in first_codex
     assert "enabled = false" in first_codex
     assert "max_concurrent_threads_per_session = 1" in first_codex
+    sl = json.loads((root / ".claude/settings.json").read_text())["statusLine"]["command"]
+    assert sl.count("statusline-tap") == 1 and " -- " not in sl, sl
+
+# An existing project statusline is chained after the tap, once.
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td) / "repo"
+    shutil.copytree(source, root, ignore=IGNORE)
+    (root / ".claude/settings.json").write_text(json.dumps({"hooks": {"x": 1}, "statusLine": {"type": "command", "command": "node gsd-statusline.js"}}))
+    for _ in range(2):
+        subprocess.run([str(root / "scripts/reconcile-runtime-config.py")], cwd=root, check=True, capture_output=True)
+    data = json.loads((root / ".claude/settings.json").read_text())
+    assert data["hooks"] == {"x": 1}
+    assert data["statusLine"]["command"].endswith("statusline-tap -- 'node gsd-statusline.js'"), data
 
 with tempfile.TemporaryDirectory() as td:
     root = Path(td) / "repo"
-    shutil.copytree(source, root)
+    shutil.copytree(source, root, ignore=IGNORE)
     (root / ".codex/config.toml").write_text('[agents]\nmax_concurrent_threads_per_session = 7\n')
     q = subprocess.run(
         [str(root / "scripts/reconcile-runtime-config.py")],

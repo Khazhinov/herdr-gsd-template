@@ -27,7 +27,16 @@ grep -qx 'existing skill' "$target/.agents/skills/gsd-context-discipline/SKILL.m
 grep -q 'echo existing' "$target/scripts/bootstrap.sh"
 
 test -f "$target/.orchestration/versions.env"
-test -f "$target/.orchestration/owner.env"
+test -f "$target/.orchestration/agents.toml"
+test -f "$target/.orchestration/routing.toml"
+test -f "$target/scripts/orch.py"
+test -f "$target/scripts/orchlib/route.py"
+test -f "$target/herdr-app/gsd-mission-control/main.js"
+grep -qxF '.orchestration/worktrees/' "$target/.gitignore"
+grep -qxF '.orchestration/runtime/' "$target/.gitignore"
+# second install must not duplicate ignore lines
+"$SOURCE/scripts/install-into-repo.sh" "$target" >/dev/null
+[[ $(grep -cxF '.orchestration/worktrees/' "$target/.gitignore") -eq 1 ]]
 test -f "$target/.orchestration/merge-required/AGENTS.md"
 test -f "$target/.orchestration/merge-required/.claude/CLAUDE.md"
 test -f "$target/.orchestration/merge-required/.codex/config.toml"

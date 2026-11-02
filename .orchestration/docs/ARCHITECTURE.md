@@ -1,60 +1,67 @@
-# Architecture
+# Архитектура v0.2
 
-| Layer | Owns | Does not own |
+## 1. Слои и владельцы ответственности
+
+| Слой | Ответственность | Чего не делает |
 |---|---|---|
-| Human | product/architecture/destructive/release authority | mechanical execution |
-| Claude/GSD owner | lifecycle, canonical `.planning/`, decisions, integration | external process lifecycle |
-| Herdr | native process topology and lifecycle signals | project task semantics |
-| Codex peers | independent review / bounded execution | canonical planning state |
-| Git/CI | implementation evidence and deterministic checks | product decisions |
+| GSD Core | жизненный цикл проекта, `.planning/`, верификатор, `planning.inspect` | не выбирает провайдера и не учитывает квоты |
+| `scripts/orch.py` (планировщик) | реестр агентов, квоты, маршрутизация, контракт задачи, worktree, доказательства | не хранит состояние проекта вне файлов и Git |
+| herdr-core (`hc`) | процессы в живущих терминалах, родитель-потомок, OSC 7501, события, документы, машины | не судит об успехе задачи |
+| Herdr App | интерфейс: пространства, вкладки воркеров, Mission Control | не содержит бизнес-логики маршрутизации |
+| Git | доказательства исполнения | - |
 
-## Ownership
+## 2. Компоненты планировщика
 
-Canonical planning ownership lives in `.orchestration/owner.env`.
+| Модуль | Назначение |
+|---|---|
+| `orchlib/config.py` | загрузка и проверка `agents.toml`, `routing.toml` и локальных переопределений `*.local.toml` |
+| `orchlib/quota.py` | нормализованные квоты: Codex RPC, журналы Codex, снимок statusline Claude, статический бюджет, `unknown`; общий кэш на учётную запись (`~/.cache/herdr-orch/quotas.json`) |
+| `orchlib/route.py` | чистая детерминированная функция выбора с причиной; не содержит идентификаторов агентов |
+| `orchlib/tasks.py` | запуск воркера через `hc run`, протокол задачи, worktree, проверка доказательств, `collect` |
+| `orchlib/state.py` | снимок для дашбордов: маршруты, квоты, задачи, tool-агенты, `planning.inspect` |
+| `orchlib/hc.py` | вызовы CLI `hc` и JSON-RPC через `hc connect` |
 
-This is intentionally separate from GSD's `runtime` and model selection settings:
-those settings configure GSD execution, while our marker controls the single-writer protocol.
-
-## Control path
+## 3. Жизненный цикл задачи
 
 ```text
-human
-  -> Claude owner
-      -> GSD artifact
-      -> Codex peer via Herdr
-          -> report / commit evidence
-      -> owner decision / merge
-      -> GSD verifier / human gate
+route(role, weight) -> decision + reason -> runtime/decisions.jsonl
+  -> execute: git worktree .orchestration/worktrees/<id>, ветка orch/<id>
+  -> контракт runtime/tasks/<id>.md = задача владельца + протокол
+  -> hc run --bg --name w-<id> --cwd <dir> --label orch.* [--outlive-parent] -- env PATH=... <agent argv> "<prompt>"
+  -> startup_check: агент сообщил статус OSC 7501, иначе диагностика (диалог доверия, вход)
+  -> воркер пишет отчёт; хост узнаёт о событии через hc wait --children
+  -> collect: маркер отчёта, коммит изменений worktree, чистота дерева, копия отчёта, остановка терминала
+  -> merge: отказ, пока внутри worktree есть живой терминал или дерево владельца грязное
 ```
 
-## Completion
+Воркер не коммитит сам: песочница Codex защищает `.git` даже при `--add-dir`, а вызов `hc send` из песочницы
+требует подтверждения (сокет ядра вне записываемых путей). Поэтому завершение определяется через `hc wait`
+и отчёт, а коммит выполняет владелец в `collect`.
 
-Herdr lifecycle answers: "what appears to be happening in this terminal process?"
+## 4. Окружение воркеров
 
-The project protocol answers: "did this work item complete correctly?"
+herdr-core запускает программы с окружением ядра, а не вызывающего терминала. При запуске ядра из Herdr App
+по SSH в нём обычно нет `~/.local/bin` и прокси. Поэтому argv воркера начинается с `env` и переменных из
+`[workers] pass_env`.
 
-The latter requires durable evidence:
-- report path;
-- exact sentinel;
-- expected commit/scope;
-- required checks.
+Worktree по умолчанию размещаются внутри репозитория (`.orchestration/worktrees/`): Claude наследует доверие
+к папке от корня проекта. Codex доверяет по корню Git, поэтому для worktree передаётся
+`-c projects."<worktree>".trust_level="trusted"`. Доверие к самому корню проекта остаётся решением человека.
 
-## Isolation
+## 5. Публикация состояния
 
-Git worktrees isolate working trees and branches only.
+`orch.py watch` (через `orch.py hub start` - в отдельном терминале hc) пересобирает снимок при каждом
+значимом событии ядра (`events.subscribe`) и по таймеру квот. Снимок публикуется:
 
-Parallel project execution also needs explicit isolation for shared resources:
-- DB/schema;
-- ports;
-- caches;
-- queues/topics;
-- test buckets/directories;
-- external rate-limited APIs.
+- в файл `.orchestration/runtime/state.json`;
+- в документ ядра `orch-<project>` (`doc.set`, событие `doc` для подписчиков);
+- в метки терминала hub: `orch.rev`, `orch.q.<agent>`, `orch.route.<role>`.
 
-Use `.orchestration/hooks/worktree-env`.
+Мод Herdr App перерисовывается при изменении меток, затем читает файл с машины hub (`readTextFile {on}`).
+Статусы воркеров мод берёт из `terminals()` напрямую.
 
-## Context boundary
+## 6. Удалённые машины
 
-Peer chats are disposable.
-`/clear` starts a fresh peer chat between independent tasks.
-Owner session handoff only happens on a durable safe boundary.
+Планировщик работает на машине владельца. Herdr App подключает её как SSH-машину; адреса терминалов
+в App получают префикс машины (`herdr-wsl/t7`), мод учитывает это при фокусе и остановке воркера.
+Запуск воркеров на других машинах (`hc run --on`) в v0.2 не реализован.

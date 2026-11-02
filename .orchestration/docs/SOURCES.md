@@ -1,28 +1,35 @@
-# Upstream sources
+# Источники
 
-Checked: 2026-10-16.
+Проверено: 2026-11-02.
 
-- Template: https://github.com/Khazhinov/herdr-gsd-template
-- Open GSD / GSD Core: https://github.com/open-gsd/gsd-core
-- Herdr: https://github.com/herdrdev/herdr
-- Herdr docs: https://herdr.dev/docs/
+- Шаблон: https://github.com/Khazhinov/herdr-gsd-template
+- Open GSD / GSD Core: https://github.com/open-gsd/gsd-core (npm `@opengsd/gsd-core`, latest `1.19.0`)
+- herdr-core: https://github.com/herdrdev/herdr-core (`hc --skill`, `hc schema`)
+- Herdr App: https://github.com/herdrdev/herdr-app, https://herdr.dev/ (`herdr-app --skill`, `~/.config/herdr-app/AGENTS.md`, `herdr.d.ts`)
 - Claude Code: https://github.com/anthropics/claude-code
 - OpenAI Codex: https://github.com/openai/codex
+- Kimi Code: https://github.com/MoonshotAI/kimi-code
+- ZCode: https://github.com/zai-org/ZCode
 
-Community / talk:
-- Telegram channel: https://t.me/thoughts_and_bytes/
-- Conference post: https://t.me/thoughts_and_bytes/27
+Сообщество:
+- Telegram-канал: https://t.me/thoughts_and_bytes/
+- Пост о конференции: https://t.me/thoughts_and_bytes/27
 
-## Compatibility facts used by the template
+## Факты, на которые опирается шаблон
 
-- GSD Core pinned: 1.17.0.
-- GSD 1.17.0 requires Node.js >=24 and npm >=10.
-- GSD Codex integration requires Codex >=0.130.0.
-- Herdr verified stable baseline: 0.9.3.
-- Claude Code verified baseline: 2.1.301.
-- Codex verified stable baseline: 0.163.0.
-- Herdr `agent prompt --wait` tracks lifecycle and does not identify an application-level work item.
-- Codex V1 uses `[agents].max_concurrent_threads_per_session`; `max_depth` is ignored by V2.
-- This template disables both Codex native multi-agent surfaces for peer roles and controls external concurrency through Herdr.
+| Факт | Где проверено |
+|---|---|
+| GSD 1.19 требует Node >= 24, npm >= 10 | `package.json` пакета `engines` |
+| GSD 1.19: `workflow.cross_ai_command` получает промпт на stdin, ожидает SUMMARY на stdout, таймаут `cross_ai_timeout` | `workflows/execute-phase/detail/elaboration.md` |
+| GSD 1.19: `planning.inspect` schema v1, только чтение, ответ > 50 КБ приходит как `@file:<path>` | `bin/lib/planning-inspect.cjs` |
+| GSD 1.19: проверка ключей конфигурации `isValidConfigKey` | `bin/lib/config-schema.cjs` |
+| hc: Codex должен работать с `--no-daemon` | `hc --skill` |
+| hc: терминалы получают окружение ядра; дети завершаются с родителем без `--outlive-parent` | `hc --skill`, `hc run --help`, наблюдение |
+| hc: `doc.get/doc.set`, `events.subscribe` (включая события `doc`, `labels`, `status`) | `hc schema` |
+| Herdr App: моды перерисовываются при изменении `terminals()`; `readTextFile({on})`, `exec({on})` | `herdr.d.ts`, `AGENTS.md` приложения |
+| Herdr App: терминал с меткой `herdr.space` появляется во вкладке пространства | `herdr-app --skill` |
+| Codex 0.165: `account/rateLimits/read` в `codex app-server` | наблюдение (JSON-RPC) |
+| Claude Code 2.1.316: `rate_limits.five_hour/seven_day` во входе statusline после первого ответа API | наблюдение |
+| Codex: песочница workspace-write не даёт писать в `.git` linked worktree даже с `--add-dir` | наблюдение (PoC) |
 
-Always re-check upstream release notes before bumping baselines.
+Перед повышением baseline заново проверять страницы релизов и ломающие изменения.

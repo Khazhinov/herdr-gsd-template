@@ -12,70 +12,51 @@ fail(){ echo "FAIL: $*" >&2; exit 1; }
 required=(
   README.md AGENTS.md LICENSE
   .claude/CLAUDE.md .codex/config.toml
-  .orchestration/versions.env .orchestration/owner.env
-  .agents/skills/gsd-context-discipline/SKILL.md
-  .agents/skills/herdr-peer/SKILL.md
-  scripts/peer-dispatch.sh scripts/peer-watch.sh scripts/peer-worktree.sh
-  scripts/codex-limits.py scripts/version-check.py scripts/doctor.sh
+  .orchestration/versions.env .orchestration/agents.toml .orchestration/routing.toml
+  .orchestration/templates/task.md .orchestration/templates/report.md
+  .agents/skills/gsd-context-discipline/SKILL.md .agents/skills/orch-workers/SKILL.md
+  scripts/orch.py scripts/orchlib/route.py scripts/orchlib/quota.py scripts/orchlib/tasks.py
+  scripts/version-check.py scripts/doctor.sh herdr-app/gsd-mission-control/main.js
 )
 for f in "${required[@]}"; do [[ -f "$f" ]] || fail "missing $f"; done
 
 for f in scripts/*.sh scripts/*.py; do [[ -x "$f" ]] || fail "not executable $f"; done
-for f in scripts/*.sh; do bash -n "$f"; done
-
-python3 -m py_compile scripts/*.py tests/*.py
-python3 tests/test_codex_limits.py
-python3 tests/test_reconcile.py
+for f in scripts/*.sh tests/*.sh; do bash -n "$f"; done
+python3 -m py_compile scripts/*.py scripts/orchlib/*.py tests/*.py
 
 python3 - <<'PY'
-import json, tomllib
+import json, sys, tomllib
+sys.path.insert(0, "scripts")
+from orchlib import config
 json.load(open('.orchestration/gsd-policy.overlay.json'))
-tomllib.load(open('.codex/config.toml','rb'))
-print('config syntax: ok')
+tomllib.load(open('.codex/config.toml', 'rb'))
+config.load('.')
+print('config syntax and registry: ok')
 PY
 
-grep -q 'GSD_VERSION=${GSD_VERSION:-1.17.0}' .orchestration/versions.env || fail "GSD pin drift"
-grep -q 'HERDR_MIN_VERSION=${HERDR_MIN_VERSION:-0.9.3}' .orchestration/versions.env || fail "Herdr baseline drift"
-grep -q 'CLAUDE_MIN_VERSION=${CLAUDE_MIN_VERSION:-2.1.301}' .orchestration/versions.env || fail "Claude baseline drift"
-grep -q 'CODEX_MIN_VERSION=${CODEX_MIN_VERSION:-0.163.0}' .orchestration/versions.env || fail "Codex baseline drift"
+grep -q 'GSD_VERSION=${GSD_VERSION:-1.19.0}' .orchestration/versions.env || fail "GSD pin drift"
+grep -q 'HC_MIN_VERSION=${HC_MIN_VERSION:-0.1.16}' .orchestration/versions.env || fail "herdr-core baseline drift"
+grep -q 'enabled = false' .codex/config.toml || fail "Codex worker fan-out guard missing"
+grep -q 'max_concurrent_threads_per_session = 1' .codex/config.toml || fail "Codex worker concurrency guard missing"
 
-grep -q 'enabled = false' .codex/config.toml || fail "Codex peer fan-out guard missing"
-grep -q 'max_concurrent_threads_per_session = 1' .codex/config.toml || fail "Codex peer concurrency guard missing"
-grep -q 'ORCHESTRATION_OWNER=' .orchestration/owner.env || fail "owner marker missing"
+! grep -R -nE 'danger-full-access|approval_policy *= *"?never|ask-for-approval +never|dangerously-skip-permissions|bypassPermissions' \
+  .codex/config.toml .orchestration/agents.toml .orchestration/routing.toml .orchestration/gsd-policy.overlay.json >/dev/null \
+  || fail "unsafe shared default found"
 
-unsafe_targets=(
-  .codex/config.toml
-  scripts
-  .orchestration/config.env
-  .orchestration/owner.env
-  .orchestration/gsd-policy.overlay.json
-)
-
-! grep -R --exclude=self-check.sh -nE \
-  'danger-full-access|approval_policy *= *"?never|ask-for-approval +never' \
-  "${unsafe_targets[@]}" >/dev/null \
-  || fail "unsafe shared Codex default found"
-
-! grep -R -nE 'args\+=\([^)]*-c[^)]*model_reasoning_effort|agent start.*-c.*model_reasoning_effort' scripts/herdr-ensure-peers.sh scripts/peer-restart-in.sh >/dev/null \
-  || fail "per-start Codex reasoning override reintroduced"
-
-grep -q 'herdr agent prompt' scripts/peer-dispatch.sh || fail "Herdr agent API missing"
-! grep -q 'pane send-text' scripts/peer-dispatch.sh || fail "raw pane dispatch found"
-grep -q 'peer-root.sh.*peer-exec' scripts/peer-worktree.sh || fail "root-before-remove invariant missing"
-grep -q 'agent prompt "$NAME" "/clear"' scripts/peer-reset.sh || fail "fresh Codex context reset missing"
-grep -q 'peer-restart-in.sh.*peer-exec' scripts/peer-worktree.sh || fail "worktree relocation helper missing"
+# v0.2 dispatch must not depend on the legacy Herdr TUI API.
+! grep -R -nE 'herdr (agent|pane) ' scripts --include='*.sh' --include='*.py' >/dev/null || fail "legacy herdr API in scripts"
 
 grep -q 'https://github.com/open-gsd/gsd-core' README.md || fail "GSD link missing"
-grep -q 'https://github.com/herdrdev/herdr' README.md || fail "Herdr link missing"
+grep -q 'https://github.com/herdrdev/herdr-core' README.md || fail "herdr-core link missing"
 grep -q 'https://github.com/anthropics/claude-code' README.md || fail "Claude link missing"
 grep -q 'https://github.com/openai/codex' README.md || fail "Codex link missing"
 grep -q 'https://t.me/thoughts_and_bytes/27' README.md || fail "talk post link missing"
 
 python3 - <<'PY'
 from pathlib import Path
-bad = ['aut'+'o-kalym', 'zv'+'enir']
+bad = ['aut'+'o-kalym', 'zv'+'enir', 'on1'+'kel']
 for p in Path('.').rglob('*'):
-    if p.is_file() and '.git' not in p.parts:
+    if p.is_file() and not {'.git', 'runtime', 'worktrees'} & set(p.parts):
         t = p.read_text(errors='ignore').lower()
         for x in bad:
             if x in t:

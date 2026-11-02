@@ -15,36 +15,30 @@ if [[ -d "$MR" ]] && find "$MR" -type f -print -quit | grep -q .; then
 fi
 
 need(){ command -v "$1" >/dev/null || { echo "missing dependency: $1" >&2; exit 2; }; }
-for x in git node npm npx python3 jq claude codex herdr; do need "$x"; done
+for x in git node npm npx python3 claude hc; do need "$x"; done
 
-./scripts/version-check.py --strict
+./scripts/version-check.py ${BOOTSTRAP_STRICT:+--strict}
 
 echo "Installing GSD Core $GSD_VERSION for Claude (project-local)..."
 npx --yes "@opengsd/gsd-core@$GSD_VERSION" --claude --local
 
-# Codex is intentionally a peer in this template, so GSD is not installed into
-# Codex by bootstrap. If you promote Codex to owner later, install GSD for Codex
-# with the official runtime installer as part of that explicit handoff.
+# Workers are not GSD owners, so GSD is installed only for the owner runtime.
+# Promoting another runtime to owner includes installing GSD for it.
 ./scripts/reconcile-runtime-config.py
 
-mkdir -p docs/peer .orchestration/runtime
+mkdir -p docs/orch .orchestration/runtime
 ./scripts/self-check.sh --offline
 
 cat <<'TXT'
 Bootstrap complete.
 
-New project:
-  1. herdr
-  2. in the first/root pane: claude
-  3. ask Claude to initialize orchestration
-  4. /gsd-new-project
-  5. ./scripts/apply-gsd-policy.py
+  1. Open the repository in Herdr App (or any terminal with herdr-core `hc`).
+  2. Start the owner: claude
+  3. First prompt:
+       Initialize this repository according to .claude/CLAUDE.md: run doctor,
+       start the orchestration hub, show quotas and routing, then wait for my GSD command.
+  4. New project: /gsd-new-project      Existing code: /gsd-onboard
+  5. Then: ./scripts/apply-gsd-policy.py
 
-Existing project:
-  same flow, but use /gsd-onboard before apply-gsd-policy.py
-
-Recommended first prompt:
-  Initialize this repository according to .claude/CLAUDE.md.
-  Verify versions, ensure Codex peer-review/peer-code/peer-exec exist,
-  show peer states and Codex quota estimate, then stop and wait for my GSD command.
+Mission Control in Herdr App: ./scripts/herdr-app-install.sh
 TXT

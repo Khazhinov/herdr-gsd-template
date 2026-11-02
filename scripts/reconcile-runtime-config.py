@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
-"""Re-apply starter-owned runtime settings after GSD installer updates runtime files.
+"""Re-apply starter-owned runtime settings after the GSD installer rewrites
+runtime files. Owns only marked blocks and one settings key:
 
-The official GSD installer owns its generated runtime surfaces.
-This script restores only the starter's marked Claude protocol block and
-refreshes an already-merged Codex peer-policy block.
+  .claude/CLAUDE.md        <!-- GSD-HERDR-STARTER --> block
+  .codex/config.toml       # GSD-HERDR-PEER-CONFIG block (worker fan-out off)
+  .claude/settings.json    statusLine -> orch.py statusline-tap (Claude quota)
 
-For an existing repository, a pre-existing Codex config must be merged manually
-first. This script deliberately refuses to inject duplicate TOML tables.
+The tap chains to the user's global statusline, so nothing visible changes.
+An existing project statusLine is kept and chained after the tap.
 """
-from pathlib import Path
+import json
 import re
+import shlex
 import sys
+from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 
-# Claude: the GSD installer may regenerate/replace this file. A uniquely marked
-# block can be safely appended/replaced without taking ownership of the rest.
 claude = root / ".claude/CLAUDE.md"
 claude.parent.mkdir(parents=True, exist_ok=True)
 block = (root / ".orchestration/claude-owner-block.md").read_text().strip()
 text = claude.read_text() if claude.exists() else ""
-pat = re.compile(
-    r"<!-- GSD-HERDR-STARTER:BEGIN -->.*?<!-- GSD-HERDR-STARTER:END -->",
-    re.S,
-)
-text = pat.sub(block, text) if pat.search(text) else text.rstrip() + ("\n\n" if text.strip() else "") + block + "\n"
+pat = re.compile(r"<!-- GSD-HERDR-STARTER:BEGIN -->.*?<!-- GSD-HERDR-STARTER:END -->", re.S)
+text = pat.sub(lambda _m: block, text) if pat.search(text) else text.rstrip() + ("\n\n" if text.strip() else "") + block + "\n"
 claude.write_text(text)
 
-# Codex: the public template owns only the explicitly marked block.
-# Never append a second [agents] / [features.multi_agent_v2] table to an
-# arbitrary existing config.
 codex = root / ".codex/config.toml"
 codex.parent.mkdir(parents=True, exist_ok=True)
-begin = "# GSD-HERDR-PEER-CONFIG:BEGIN"
-end = "# GSD-HERDR-PEER-CONFIG:END"
+begin, end = "# GSD-HERDR-PEER-CONFIG:BEGIN", "# GSD-HERDR-PEER-CONFIG:END"
 managed = f"""{begin}
 [agents]
 enabled = false
@@ -44,21 +38,27 @@ max_depth = 0
 enabled = false
 max_concurrent_threads_per_session = 1
 {end}"""
-
 if not codex.exists() or not codex.read_text().strip():
     codex.write_text(managed + "\n")
 else:
     text = codex.read_text()
     if begin not in text or end not in text:
-        print(
-            "Codex config exists but starter marker block is missing.\n"
-            "Merge `.orchestration/merge-required/codex-config.toml` (or the starter block) "
-            "into `.codex/config.toml` before bootstrap/reconcile.",
-            file=sys.stderr,
-        )
+        print("Codex config exists but the starter marker block is missing.\n"
+              "Merge the block from scripts/reconcile-runtime-config.py into .codex/config.toml "
+              "(without duplicating [agents] tables), then rerun.", file=sys.stderr)
         raise SystemExit(3)
-    pat = re.compile(re.escape(begin) + r".*?" + re.escape(end), re.S)
-    text = pat.sub(managed, text)
+    text = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: managed, text, flags=re.S)
     codex.write_text(text.rstrip() + "\n")
+
+settings = root / ".claude/settings.json"
+data = json.loads(settings.read_text()) if settings.exists() and settings.read_text().strip() else {}
+tap = 'python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/orch.py" statusline-tap'
+cur = (data.get("statusLine") or {}).get("command", "")
+if "statusline-tap" not in cur:
+    # Chain an existing project statusline after the tap; empty chain means
+    # the tap runs the user's global statusline itself.
+    cmd = tap + (" -- " + shlex.quote(cur) if cur else "")
+    data["statusLine"] = {"type": "command", "command": cmd}
+    settings.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 print("runtime config reconciled")

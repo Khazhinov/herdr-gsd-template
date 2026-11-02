@@ -32,7 +32,7 @@ copy_tree_conflict_safe() {
   [[ -d "$srcroot" ]] || return
   while IFS= read -r -d '' src; do
     sub=${src#"$srcroot/"}
-    [[ "$sub" == merge-required/* ]] && continue
+    case "$sub" in merge-required/*|runtime/*|worktrees/*|*__pycache__*|*.pyc) continue;; esac
     copy_one "$src" "$rel/$sub"
   done < <(find "$srcroot" -type f -print0)
 }
@@ -40,14 +40,34 @@ copy_tree_conflict_safe() {
 copy_tree_conflict_safe .agents
 copy_tree_conflict_safe .orchestration
 copy_tree_conflict_safe scripts
+copy_tree_conflict_safe herdr-app
 
 copy_one "$SOURCE/.mcp.example.json" .mcp.example.json
 copy_one "$SOURCE/AGENTS.md" AGENTS.md
 copy_one "$SOURCE/.claude/CLAUDE.md" .claude/CLAUDE.md
 copy_one "$SOURCE/.codex/config.toml" .codex/config.toml
 
-mkdir -p "$TARGET/docs/peer"
+mkdir -p "$TARGET/docs/orch"
 chmod +x "$TARGET"/scripts/*.sh "$TARGET"/scripts/*.py 2>/dev/null || true
+
+# Runtime state and worker worktrees never belong in git.
+touch "$TARGET/.gitignore"
+for line in .orchestration/runtime/ .orchestration/merge-required/ .orchestration/worktrees/ \
+            .orchestration/agents.local.toml .orchestration/routing.local.toml; do
+  grep -qxF "$line" "$TARGET/.gitignore" || echo "$line" >> "$TARGET/.gitignore"
+done
+
+# v0.1 leftovers: legacy Herdr TUI peers. Listed, never deleted automatically.
+legacy=()
+for f in scripts/peer-dispatch.sh scripts/peer-watch.sh scripts/peer-worktree.sh scripts/peer-reset.sh \
+         scripts/peer-restart-in.sh scripts/peer-root.sh scripts/peer-status.sh scripts/herdr-ensure-peers.sh \
+         scripts/codex-limits.py .orchestration/owner.env .orchestration/config.env .agents/skills/herdr-peer; do
+  [[ -e "$TARGET/$f" ]] && legacy+=("$f")
+done
+if ((${#legacy[@]})); then
+  echo "v0.1 files found (see .orchestration/docs/MIGRATION.md before removing):"
+  printf '  %s\n' "${legacy[@]}"
+fi
 
 echo "installed orchestration overlay into $TARGET"
 if find "$MR" -type f -print -quit | grep -q .; then

@@ -1,13 +1,12 @@
 <!-- GSD-HERDR-STARTER:BEGIN -->
-## GSD + Herdr owner protocol
+## GSD + herdr-core owner protocol
 
-Default ownership is declared in `.orchestration/owner.env`; do not infer it from GSD runtime/model configuration.
-Before GSD work read `.agents/skills/gsd-context-discipline/SKILL.md` and `.agents/skills/herdr-peer/SKILL.md`.
-If inside Herdr (`HERDR_ENV=1`), run `./scripts/herdr-ensure-peers.sh` at session start.
-Only the declared owner writes canonical `.planning/`; external Codex peers return `docs/peer/` artifacts.
-Use peer gates after discuss, plan and implementation; GSD subagents never call Herdr.
-Before heavy Codex execution check `./scripts/codex-limits.py --json`.
-Before deleting a peer worktree return `peer-exec` to repository root (`peer-worktree.sh merge/remove` enforce this).
-Recover new sessions from `.planning/`, peer reports and Git, not chat history.
-Apply the optimization stack from `gsd-context-discipline`.
+The orchestration owner is `owner` in `.orchestration/routing.toml`; never infer it from GSD runtime/model settings.
+Before GSD work read `.agents/skills/gsd-context-discipline/SKILL.md` and `.agents/skills/orch-workers/SKILL.md`.
+Only the owner writes canonical `.planning/`; workers return reports under `docs/orch/` and code in their worktree.
+Route external work only through `python3 scripts/orch.py` (route, dispatch, wait, collect); it applies quota, reserves, independence and records the reason.
+Gates: post-discuss and post-plan review, bounded execution, post-implementation code review (skill, section "GSD gates").
+GSD subagents never start workers; only this top-level owner does.
+Worker status is not task success: `orch.py collect` judges the report sentinel and Git evidence.
+Recover new sessions from `.planning/`, `docs/orch/`, `.orchestration/runtime/tasks/` and Git, not chat history.
 <!-- GSD-HERDR-STARTER:END -->

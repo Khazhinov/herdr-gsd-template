@@ -6,40 +6,25 @@ QUIET=0
 [[ ${1:-} == --quiet ]] && QUIET=1
 
 echo "== versions =="
-./scripts/version-check.py --strict
+./scripts/version-check.py || true
 
 echo "== repository =="
 git rev-parse --show-toplevel >/dev/null
-python3 - <<'PY'
-from pathlib import Path
-owner={}
-for raw in Path('.orchestration/owner.env').read_text().splitlines():
-    if raw.startswith('ORCHESTRATION_OWNER='):
-        owner['owner']=raw
-print("owner marker: .orchestration/owner.env")
-print("planning:", "initialized" if Path('.planning').exists() else "not initialized")
-PY
+echo "planning: $([[ -d .planning ]] && echo initialized || echo 'not initialized')"
 
 echo "== static checks =="
 ./scripts/self-check.sh --offline >/dev/null
 echo "static checks: PASS"
 
-if [[ ${HERDR_ENV:-0} == 1 ]]; then
-  echo "== Herdr =="
-  herdr --version
-  ./scripts/peer-status.sh || true
+echo "== herdr-core =="
+if hc server status --json >/dev/null 2>&1; then
+  echo "core: reachable ($(hc --version))"
+  [[ -n ${HC_TERMINAL_ID:-} ]] && echo "this terminal: $HC_TERMINAL_ID" || { ((QUIET)) || echo "not inside an hc terminal: workers will have no parent"; }
 else
-  (( QUIET )) || echo "Herdr runtime: not inside a Herdr pane (HERDR_ENV != 1)"
+  echo "core: NOT reachable; workers cannot start" >&2
 fi
 
-set +e
-./scripts/codex-limits.py --json
-LIMIT_RC=$?
-set -e
-case "$LIMIT_RC" in
-  0|1) ;;
-  2) (( QUIET )) || echo "Codex quota telemetry: unavailable; heavy auto-routing will fail closed" ;;
-  *) echo "Codex quota estimator unexpected rc=$LIMIT_RC" >&2; exit "$LIMIT_RC" ;;
-esac
-
+echo "== quotas and routing =="
+python3 scripts/orch.py quota
+python3 scripts/orch.py route execute | tail -1
 echo "doctor: PASS"

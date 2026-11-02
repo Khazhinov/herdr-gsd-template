@@ -14,7 +14,13 @@
     "node_repair_budget": 1,
     "context_guard_mode": "warn",
     "use_worktrees": true,
-    "compact_content": true
+    "compact_content": true,
+    "cross_ai_execution": false,
+    "cross_ai_command": "python3 scripts/orch.py gsd-cross-ai",
+    "cross_ai_timeout": 3600
+  },
+  "review": {
+    "default_reviewers": ["codex"]
   },
   "models": {
     "planning": "opus",

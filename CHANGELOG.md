@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.1.0 — 2026-10-16
+## 0.2.0 - 2026-11-02
+
+- Execution substrate moved from the legacy Herdr TUI to herdr-core (`hc`); Herdr App is the optional UI.
+- Agent registry (`.orchestration/agents.toml`) and routing policy (`routing.toml`) replace hard-coded Claude/Codex peers.
+- Deterministic scheduler with recorded reasons: capability, live quota, reserves, review independence,
+  stability gate, per-agent parallelism, manual override; strategies `ordered`, `cheapest`, `use-or-lose`.
+- Live quotas: Codex app-server RPC (`account/rateLimits/read`), Claude statusline `rate_limits` tap;
+  unknown or stale quota fails closed for heavy work.
+- Disposable workers per task (`orch.py dispatch/wait/collect`), worktrees inside the repository,
+  owner-side commit, guard against removing a worktree with a live terminal.
+- GSD Mission Control: Herdr App mod and layout, reactive through hub terminal labels; terminal dashboard `orch.py watch`.
+- GSD 1.19.0: overlay validated by GSD's own key validator, `cross_ai_command` bridge, native reviewer lanes for the strict profile.
+- Tool-agent hub integration (`orch.py tools`, `orch.py tool-ask`).
+- Removed v0.1 peer scripts, `owner.env`, `config.env`, `codex-limits.py`, skill `herdr-peer`.
+
+## 0.1.0 - 2026-10-16
 
 Initial public template.
 

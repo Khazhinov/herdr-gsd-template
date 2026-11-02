@@ -1,72 +1,25 @@
-# Publication review — 2026-10-16
+# Ревью и верификация в v0.2
 
-This file records the third large review cycle before publishing the template.
+## 1. Профили
 
-## Pass 1 — current upstream contracts
+| Профиль | Ревью CONTEXT и PLAN | Ревью кода | Верификация |
+|---|---|---|---|
+| lean (по умолчанию) | независимый воркер `orch.py dispatch --role review` | независимый воркер по diff ветки | GSD verifier |
+| strict | то же + `/gsd-plan-review-convergence` | воркер + `/gsd-review` с `review.default_reviewers` | GSD verifier + человек |
 
-Status: PASS after changes.
+## 2. Почему встроенные линии GSD не основные
 
-Verified against current upstream release/docs:
-- GSD Core updated to 1.17.0.
-- GSD 1.17.0 runtime requirement updated to Node.js >=24 / npm >=10.
-- Herdr baseline updated to 0.9.3.
-- Claude Code baseline updated to 2.1.301.
-- Codex baseline updated to 0.163.0.
-- Herdr automation uses agent-aware APIs, not raw pane text for normal tasks.
-- Herdr lifecycle is not used as work-item completion.
-- Codex current concurrency naming is used; V2 semantics are handled explicitly.
-- per-start `-c model_reasoning_effort=...` overrides removed from Herdr-managed Codex startup.
-- orchestration ownership moved to `.orchestration/owner.env`.
-- GSD runtime remains only GSD runtime/model-resolution configuration.
-- GSD plan/code review responsibilities remain reassigned to external Codex peers while verifier stays enabled.
-- public template has no permissive sandbox/approval defaults.
-- README links all upstream projects and the originating talk/channel.
+GSD 1.19 поддерживает линии ревьюеров (`codex`, `claude`, `kimi-code`, `opencode` и др.) и экземпляры
+`review.reviewer_instances`. Линия запускает CLI разово и не знает о квотах и резервах. Планировщик
+выбирает ревьюера с учётом квот и независимости и фиксирует причину. Поэтому линии GSD оставлены
+для профиля strict как подтверждение, а не как основной путь.
 
-## Pass 2 — protocol and failure-mode review
+## 3. Независимость
 
-Status: PASS after fixes.
+Роль `review` имеет `independent = true`: владелец выбирается только при отсутствии других подходящих агентов,
+и решение помечается `independent: false`. Такое ревью владелец записывает как неисполненное условие независимости.
 
-Verified:
-- one canonical `.planning/` writer;
-- peer cannot recursively create its own swarm under project config/instructions;
-- task contract is explicit;
-- fresh peer chat via `/clear`;
-- cwd relocation uses process restart, not `/clear`;
-- dispatch submits exactly once and never blind-retries;
-- task completion requires durable report + sentinel + Git/check evidence;
-- blocked states require deliberate intervention;
-- quota telemetry fails closed for automatic heavy execution when unavailable;
-- both visible primary and secondary rate-limit windows constrain scheduling;
-- running tasks are never migrated half-turn;
-- worktree removal returns peer to repo root first;
-- worktree does not pretend to isolate external resources;
-- overlay install remains conflict-safe;
-- GSD installer reconciliation is idempotent;
-- optimization/context discipline is mandatory in both owner and peer instructions.
+## 4. Цикл
 
-## Pass 3 — operational/static simulation
-
-Status: PASS in the generated artifact.
-
-Executed:
-- shell syntax validation;
-- Python compile/tests;
-- JSON/TOML parse;
-- version/pin consistency checks;
-- legacy-version and unsafe-setting grep;
-- privacy/domain leakage scan;
-- overlay simulation into a Git repository with existing instructions;
-- reconcile idempotence;
-- mocked Herdr worktree lifecycle: create → peer relocation → commit → root restart → merge → remove/prune.
-
-## Environment-dependent smoke tests
-
-Still require the user's authenticated machine:
-1. Herdr 0.9.3+ recognizes installed Claude/Codex and lifecycle states.
-2. Codex 0.163.0 accepts `/clear` through `herdr agent prompt`.
-3. Local rollout telemetry still contains usable rate-limit windows.
-4. Project-specific worktree resource hook correctly isolates DB/ports/cache/etc.
-5. Any optional role-specific model names exist on the user's plan.
-6. GSD installer output on the user's platform remains compatible with the reconciliation block.
-
-These are deliberately not claimed as locally authenticated in this artifact.
+Одно независимое ревью, одна правка владельца, повторное ревью только изменённых областей.
+Перед повторным ревью воркер получает прежние находки и diff правки, а не весь контекст.
