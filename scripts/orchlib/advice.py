@@ -9,6 +9,7 @@ Context size drives cost: every owner request resends the whole context, so a
 import json
 import os
 import re
+import shlex
 import subprocess
 import time
 import tomllib
@@ -327,8 +328,10 @@ def compute(cfg, quotas, running, now=None, check_update=True):
                 "level": "info",
                 "kind": "update",
                 "text": f"template {up['latest']} available (installed {up['installed']})",
-                "command": f"git clone {up['upstream']} && "
-                f"<clone>/scripts/install-into-repo.sh {cfg['root']}",
+                # Runnable as copied: a temp clone of the release tag.
+                "command": f"d=$(mktemp -d) && git clone -q --depth 1 --branch v{up['latest']} "
+                f"{shlex.quote(up['upstream'])} \"$d\" && "
+                f"\"$d\"/scripts/install-into-repo.sh {shlex.quote(str(cfg['root']))}",
             }
         )
     return {
