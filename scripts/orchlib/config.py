@@ -1,4 +1,5 @@
 """Load and validate the agent registry and routing policy."""
+
 import os
 import re
 import tomllib
@@ -65,7 +66,9 @@ def validate(cfg):
         if a.get("cost_tier") not in COST:
             raise ConfigError(f"{where}.cost_tier must be one of {sorted(COST)}")
         if a.get("quota", "none") not in PROBES:
-            raise ConfigError(f"{where}.quota: unknown probe {a.get('quota')!r}; known {sorted(PROBES)}")
+            raise ConfigError(
+                f"{where}.quota: unknown probe {a.get('quota')!r}; known {sorted(PROBES)}"
+            )
         if a.get("stability") not in STABILITY:
             raise ConfigError(f"{where}.stability must be one of {sorted(STABILITY)}")
     owner = r.get("owner")

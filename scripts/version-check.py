@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-import argparse, re, shutil, subprocess
+import argparse
+import re
+import shutil
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,7 +39,10 @@ def check(name, command, minimum, required=True):
         return not required
     got, want = ver_tuple(run(command)), ver_tuple(minimum)
     ok = bool(got and want and got >= want)
-    print(f"{name}: {'.'.join(map(str, got)) if got else 'unknown'} (baseline >= {minimum}) {'OK' if ok else 'CHECK'}")
+    print(
+        f"{name}: {'.'.join(map(str, got)) if got else 'unknown'} (baseline >= {minimum}) "
+        f"{'OK' if ok else 'CHECK'}"
+    )
     return ok
 
 
@@ -51,7 +57,9 @@ def main():
     ok &= check("npm", ["npm", "--version"], f"{e.get('NPM_MIN_MAJOR', '10')}.0.0")
     ok &= check("herdr-core (hc)", ["hc", "--version"], e.get("HC_MIN_VERSION", "0.1.16"))
     ok &= check("Claude Code", ["claude", "--version"], e.get("CLAUDE_MIN_VERSION", "2.1.316"))
-    ok &= check("Codex", ["codex", "--version"], e.get("CODEX_MIN_VERSION", "0.165.0"), required=False)
+    ok &= check(
+        "Codex", ["codex", "--version"], e.get("CODEX_MIN_VERSION", "0.165.0"), required=False
+    )
     return 1 if ns.strict and not ok else 0
 
 

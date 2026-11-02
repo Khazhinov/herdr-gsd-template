@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-import json, sys
+import json
+import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -10,6 +11,7 @@ if not target.exists():
     print("missing .planning/config.json; run GSD new-project/onboard first", file=sys.stderr)
     raise SystemExit(2)
 
+
 def merge(a, b):
     for k, v in b.items():
         if isinstance(v, dict) and isinstance(a.get(k), dict):
@@ -17,6 +19,7 @@ def merge(a, b):
         else:
             a[k] = v
     return a
+
 
 data = json.loads(target.read_text())
 policy = json.loads(overlay.read_text())

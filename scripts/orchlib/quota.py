@@ -6,6 +6,7 @@
 
 Probes never guess: no reading -> available False, confidence "unknown".
 """
+
 import glob
 import json
 import os
@@ -20,9 +21,17 @@ QUOTA_CACHE = CACHE_DIR / "quotas.json"
 
 
 def unknown(agent, reason, source=None):
-    return {"agent": agent, "available": False, "confidence": "unknown", "source": source,
-            "observed_at": None, "stale": False, "windows": [], "effective_remaining_percent": None,
-            "extra": {"reason": reason}}
+    return {
+        "agent": agent,
+        "available": False,
+        "confidence": "unknown",
+        "source": source,
+        "observed_at": None,
+        "stale": False,
+        "windows": [],
+        "effective_remaining_percent": None,
+        "extra": {"reason": reason},
+    }
 
 
 def window(name, used, resets_at, minutes, now):
@@ -30,8 +39,13 @@ def window(name, used, resets_at, minutes, now):
     resets_at = float(resets_at) if resets_at else None
     # A window whose reset already passed has refilled since the observation.
     remaining = 100.0 if resets_at and resets_at <= now else 100.0 - used
-    return {"name": name, "used_percent": round(used, 1), "remaining_percent": round(remaining, 1),
-            "resets_at": resets_at, "window_minutes": minutes}
+    return {
+        "name": name,
+        "used_percent": round(used, 1),
+        "remaining_percent": round(remaining, 1),
+        "resets_at": resets_at,
+        "window_minutes": minutes,
+    }
 
 
 def label(minutes, fallback):
@@ -51,15 +65,21 @@ def finish(res, stale_after_s, now):
 
 # ---------------------------------------------------------------- codex
 
+
 def codex_rpc(timeout=15.0, argv=None):
     """Ask the Codex app-server for live account rate limits (one JSON-RPC call)."""
     argv = argv or ["codex", "app-server"]
-    p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                         stderr=subprocess.DEVNULL, text=True)
+    p = subprocess.Popen(
+        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+    )
     try:
         msgs = [
-            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-             "params": {"clientInfo": {"name": "herdr-orch", "version": "0.2"}}},
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"clientInfo": {"name": "herdr-orch", "version": "0.2"}},
+            },
             {"jsonrpc": "2.0", "method": "initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read"},
         ]
@@ -96,19 +116,29 @@ def codex_from_rpc(result, now):
             m = w.get("windowDurationMins")
             ws.append(window(label(m, fallback), w["usedPercent"], w.get("resetsAt"), m, now))
     credits = (result.get("rateLimitResetCredits") or {}).get("credits") or []
-    return {"agent": "codex", "available": True, "confidence": "official-rpc",
-            "source": "codex app-server account/rateLimits/read", "observed_at": now,
-            "stale": False, "windows": ws,
-            "extra": {"plan": rl.get("planType"),
-                      "limit_reached": rl.get("rateLimitReachedType"),
-                      "usage_allowed": result.get("ordinaryUsageAllowed"),
-                      "reset_credits_available": sum(1 for c in credits if c.get("status") == "available")}}
+    return {
+        "agent": "codex",
+        "available": True,
+        "confidence": "official-rpc",
+        "source": "codex app-server account/rateLimits/read",
+        "observed_at": now,
+        "stale": False,
+        "windows": ws,
+        "extra": {
+            "plan": rl.get("planType"),
+            "limit_reached": rl.get("rateLimitReachedType"),
+            "usage_allowed": result.get("ordinaryUsageAllowed"),
+            "reset_credits_available": sum(1 for c in credits if c.get("status") == "available"),
+        },
+    }
 
 
 def _find_rl(x):
     if isinstance(x, dict):
         rl = x.get("rate_limits")
-        if isinstance(rl, dict) and (isinstance(rl.get("primary"), dict) or isinstance(rl.get("secondary"), dict)):
+        if isinstance(rl, dict) and (
+            isinstance(rl.get("primary"), dict) or isinstance(rl.get("secondary"), dict)
+        ):
             return rl
         for v in x.values():
             r = _find_rl(v)
@@ -125,8 +155,12 @@ def _find_rl(x):
 def codex_from_rollouts(sessions_root, now):
     """Fallback: last rate_limits event in local Codex session logs."""
     from datetime import datetime
-    files = sorted(glob.glob(str(Path(sessions_root) / "**" / "rollout-*.jsonl"), recursive=True),
-                   key=lambda f: Path(f).stat().st_mtime, reverse=True)[:30]
+
+    files = sorted(
+        glob.glob(str(Path(sessions_root) / "**" / "rollout-*.jsonl"), recursive=True),
+        key=lambda f: Path(f).stat().st_mtime,
+        reverse=True,
+    )[:30]
     best, best_ts, src = None, -1.0, None
     for fn in files:
         mtime = Path(fn).stat().st_mtime
@@ -145,7 +179,9 @@ def codex_from_rollouts(sessions_root, now):
             if not rl:
                 continue
             try:
-                ts = datetime.fromisoformat(str(obj.get("timestamp", "")).replace("Z", "+00:00")).timestamp()
+                ts = datetime.fromisoformat(
+                    str(obj.get("timestamp", "")).replace("Z", "+00:00")
+                ).timestamp()
             except ValueError:
                 ts = mtime
             if ts > best_ts:
@@ -158,8 +194,16 @@ def codex_from_rollouts(sessions_root, now):
         if isinstance(w, dict) and w.get("used_percent") is not None:
             m = w.get("window_minutes")
             ws.append(window(label(m, fallback), w["used_percent"], w.get("resets_at"), m, now))
-    return {"agent": "codex", "available": True, "confidence": "parsed-local-telemetry",
-            "source": src, "observed_at": best_ts, "stale": False, "windows": ws, "extra": {}}
+    return {
+        "agent": "codex",
+        "available": True,
+        "confidence": "parsed-local-telemetry",
+        "source": src,
+        "observed_at": best_ts,
+        "stale": False,
+        "windows": ws,
+        "extra": {},
+    }
 
 
 def probe_codex(now, stale_after_s, rpc=codex_rpc, sessions_root=None):
@@ -175,6 +219,7 @@ def probe_codex(now, stale_after_s, rpc=codex_rpc, sessions_root=None):
 
 # ---------------------------------------------------------------- claude
 
+
 def probe_claude(now, stale_after_s, snapshot=None):
     """Read the snapshot written by `orch.py statusline-tap` from Claude Code's
     statusline input (rate_limits.five_hour / seven_day)."""
@@ -182,33 +227,61 @@ def probe_claude(now, stale_after_s, snapshot=None):
     try:
         data = json.loads(snap.read_text())
     except (OSError, json.JSONDecodeError):
-        return unknown("claude", "no statusline snapshot; install the tap (reconcile-runtime-config.py)", str(snap))
+        return unknown(
+            "claude",
+            "no statusline snapshot; install the tap (reconcile-runtime-config.py)",
+            str(snap),
+        )
     rl = data.get("rate_limits")
     if not isinstance(rl, dict):
-        return unknown("claude", "statusline reports no rate_limits (API key or non-subscription auth)", str(snap))
+        return unknown(
+            "claude",
+            "statusline reports no rate_limits (API key or non-subscription auth)",
+            str(snap),
+        )
     ws = []
     for key, name, minutes in (("five_hour", "5h", 300), ("seven_day", "7d", 10080)):
         w = rl.get(key)
         if isinstance(w, dict) and w.get("used_percentage") is not None:
             ws.append(window(name, w["used_percentage"], w.get("resets_at"), minutes, now))
-    extra = {k: v for k, v in rl.items() if k not in ("five_hour", "seven_day") and isinstance(v, dict)}
-    res = {"agent": "claude", "available": True, "confidence": "official-statusline",
-           "source": str(snap), "observed_at": data.get("observed_at"), "stale": False,
-           "windows": ws, "extra": {"other_limits": sorted(extra)}}
+    extra = {
+        k: v for k, v in rl.items() if k not in ("five_hour", "seven_day") and isinstance(v, dict)
+    }
+    res = {
+        "agent": "claude",
+        "available": True,
+        "confidence": "official-statusline",
+        "source": str(snap),
+        "observed_at": data.get("observed_at"),
+        "stale": False,
+        "windows": ws,
+        "extra": {"other_limits": sorted(extra)},
+    }
     return finish(res, stale_after_s, now)
 
 
 def probe_static(agent, spec, now):
     if not isinstance(spec, dict) or spec.get("remaining_percent") is None:
         return unknown(agent, "quota = static but quota_static.remaining_percent is not set")
-    res = {"agent": agent, "available": True, "confidence": "configured-static", "source": "agents config",
-           "observed_at": now, "stale": False,
-           "windows": [window("budget", 100 - float(spec["remaining_percent"]), spec.get("resets_at"), None, now)],
-           "extra": {}}
+    res = {
+        "agent": agent,
+        "available": True,
+        "confidence": "configured-static",
+        "source": "agents config",
+        "observed_at": now,
+        "stale": False,
+        "windows": [
+            window(
+                "budget", 100 - float(spec["remaining_percent"]), spec.get("resets_at"), None, now
+            )
+        ],
+        "extra": {},
+    }
     return finish(res, 0, now)
 
 
 # ---------------------------------------------------------------- facade
+
 
 def account(cfg, aid):
     """Agents that draw on one quota (variants of one CLI) share this key."""
@@ -226,7 +299,9 @@ def probe(cfg, aid, now=None, shared=None):
     shared = {} if shared is None else shared
     if kind in ("codex", "claude"):
         if kind not in shared:
-            shared[kind] = probe_codex(now, stale_s) if kind == "codex" else probe_claude(now, stale_s)
+            shared[kind] = (
+                probe_codex(now, stale_s) if kind == "codex" else probe_claude(now, stale_s)
+            )
         res = json.loads(json.dumps(shared[kind]))
         res["agent"] = aid
     elif kind == "static":
@@ -238,7 +313,9 @@ def probe(cfg, aid, now=None, shared=None):
     names = a.get("quota_windows")
     if names and res["windows"]:
         gating = [w for w in res["windows"] if w["name"] in names]
-        res["effective_remaining_percent"] = min(w["remaining_percent"] for w in gating) if gating else None
+        res["effective_remaining_percent"] = (
+            min(w["remaining_percent"] for w in gating) if gating else None
+        )
         res["extra"]["gating_windows"] = names
     return res
 
@@ -263,14 +340,20 @@ def all_quotas(cfg, max_age=60.0, refresh=False):
         changed = True
     if changed:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = QUOTA_CACHE.with_suffix(f".{os.getpid()}.tmp")  # shared by every project: unique per writer
+        # Shared by every project: unique temp name per writer.
+        tmp = QUOTA_CACHE.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(cache, indent=1))
         tmp.replace(QUOTA_CACHE)
     return out
 
 
 def known(q):
-    return bool(q and q.get("available") and not q.get("stale") and q.get("effective_remaining_percent") is not None)
+    return bool(
+        q
+        and q.get("available")
+        and not q.get("stale")
+        and q.get("effective_remaining_percent") is not None
+    )
 
 
 def headroom(q, now=None):

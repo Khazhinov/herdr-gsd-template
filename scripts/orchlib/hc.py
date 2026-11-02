@@ -1,5 +1,7 @@
 """Thin herdr-core access: the `hc` CLI for commands, `hc connect` for
 JSON-RPC (documents, event subscription). ORCH_HC replaces the binary in tests."""
+
+import contextlib
 import json
 import os
 import subprocess
@@ -25,7 +27,9 @@ def call(*args, check=True, timeout=None):
             kind = json.loads(p.stderr).get("error", {}).get("kind")
         except (json.JSONDecodeError, AttributeError):
             pass
-        raise HCError(f"hc {' '.join(args)}: rc={p.returncode} {p.stderr.strip()[:400]}", kind, p.returncode)
+        raise HCError(
+            f"hc {' '.join(args)}: rc={p.returncode} {p.stderr.strip()[:400]}", kind, p.returncode
+        )
     out = p.stdout.strip()
     if out.startswith(("{", "[")):
         try:
@@ -97,8 +101,14 @@ class RPC:
     """JSON-RPC over `hc connect`. Notifications go to on_event (own thread)."""
 
     def __init__(self, on_event=None):
-        self.p = subprocess.Popen([*binary(), "connect"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        self.p = subprocess.Popen(
+            [*binary(), "connect"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            bufsize=1,
+        )
         self.n = 0
         self.lock = threading.Lock()
         self.pending = {}
@@ -129,14 +139,19 @@ class RPC:
             i = self.n
             slot = {"ev": threading.Event(), "msg": None}
             self.pending[i] = slot
-            self.p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params}) + "\n")
+            self.p.stdin.write(
+                json.dumps({"jsonrpc": "2.0", "id": i, "method": method, "params": params}) + "\n"
+            )
             self.p.stdin.flush()
         if not slot["ev"].wait(timeout) or slot["msg"] is None:
             self.pending.pop(i, None)
             raise HCError(f"hc rpc {method}: no answer")
         if "error" in slot["msg"]:
             e = slot["msg"]["error"]
-            raise HCError(f"hc rpc {method}: {e}", (e.get("data") or {}).get("kind") if isinstance(e, dict) else None)
+            raise HCError(
+                f"hc rpc {method}: {e}",
+                (e.get("data") or {}).get("kind") if isinstance(e, dict) else None,
+            )
         return slot["msg"].get("result")
 
     def doc_put(self, name, value):
@@ -150,11 +165,9 @@ class RPC:
         return None
 
     def close(self):
-        try:
+        with contextlib.suppress(Exception):
             self.p.kill()
             self.p.wait(timeout=5)
-        except Exception:
-            pass
 
 
 def doc_put_once(name, value):

@@ -3,6 +3,7 @@
 A worker terminal is runtime state. A task is done only when its report ends
 with a sentinel and, for execution, its branch carries commits on a clean tree.
 """
+
 import json
 import os
 import re
@@ -18,8 +19,20 @@ from .config import project_name
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,27}$")
 SENTINELS = ("Result: complete", "Result: incomplete", "Major issue: yes", "Major issue: no")
 OK_SENTINELS = ("Result: complete", "Major issue: no")
-DEFAULT_PASS_ENV = ["PATH", "LANG", "LC_ALL", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy",
-                    "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy", "HERDR_TOOL_AGENTS"]
+DEFAULT_PASS_ENV = [
+    "PATH",
+    "LANG",
+    "LC_ALL",
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
+    "HERDR_TOOL_AGENTS",
+]
 
 
 def runtime(cfg):
@@ -29,7 +42,9 @@ def runtime(cfg):
 
 
 def git(cfg, *args, cwd=None, check=True):
-    p = subprocess.run(["git", "-C", str(cwd or cfg["root"]), *args], capture_output=True, text=True)
+    p = subprocess.run(
+        ["git", "-C", str(cwd or cfg["root"]), *args], capture_output=True, text=True
+    )
     if check and p.returncode:
         raise RuntimeError(f"git {' '.join(args)}: {p.stderr.strip()}")
     return p.stdout.strip()
@@ -108,7 +123,9 @@ def costs(cfg):
     samples = {}
     for t in sorted(all_tasks(cfg), key=lambda t: t.get("finished_at") or 0):
         if t.get("quota_burn") is not None and not t.get("quota_shared"):
-            samples.setdefault(f"{quota.account(cfg, t['agent'])}/{t.get('weight')}", []).append(t["quota_burn"])
+            samples.setdefault(f"{quota.account(cfg, t['agent'])}/{t.get('weight')}", []).append(
+                t["quota_burn"]
+            )
     return {k: round(statistics.median(v[-5:]), 1) for k, v in samples.items()}
 
 
@@ -121,8 +138,11 @@ def pending(cfg, quotas, measured):
             continue
         est = route.cost(cfg, measured, t["agent"], t.get("weight", "heavy"))
         q = quotas.get(t["agent"])
-        spent = (t["quota_start"] - q["effective_remaining_percent"]) if (
-            quota.known(q) and t.get("quota_start") is not None) else 0
+        spent = (
+            (t["quota_start"] - q["effective_remaining_percent"])
+            if (quota.known(q) and t.get("quota_start") is not None)
+            else 0
+        )
         acct = quota.account(cfg, t["agent"])
         out[acct] = out.get(acct, 0) + max(0.0, est - max(0.0, spent))
     return out
@@ -132,18 +152,30 @@ def decide(cfg, role, quotas=None, **kw):
     """route.decide with live running counts, installed CLIs and quota costs."""
     quotas = quotas or quota.all_quotas(cfg)
     measured = costs(cfg)
-    return route.decide(cfg, role, quotas, running_counts(cfg), installed=installed(cfg),
-                        costs=measured, pending=pending(cfg, quotas, measured), **kw)
+    return route.decide(
+        cfg,
+        role,
+        quotas,
+        running_counts(cfg),
+        installed=installed(cfg),
+        costs=measured,
+        pending=pending(cfg, quotas, measured),
+        **kw,
+    )
 
 
 def preview(cfg, quotas=None):
     """What each role would get right now (dashboard, `orch.py route`)."""
     quotas = quotas or quota.all_quotas(cfg)
     ov = override_get(cfg)
-    return {role: decide(cfg, role, quotas, override=ov.get(role)) for role in cfg["routing"].get("roles", {})}
+    return {
+        role: decide(cfg, role, quotas, override=ov.get(role))
+        for role in cfg["routing"].get("roles", {})
+    }
 
 
 # ---------------------------------------------------------------- worktrees
+
 
 def wt_paths(cfg, tid):
     w = cfg["routing"].get("workers", {})
@@ -161,8 +193,20 @@ def wt_create(cfg, tid, base="HEAD"):
     if path.exists():
         raise SystemExit(f"worktree exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    exists = subprocess.run(["git", "-C", str(cfg["root"]), "show-ref", "--verify", "--quiet",
-                             f"refs/heads/{branch}"]).returncode == 0
+    exists = (
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(cfg["root"]),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{branch}",
+            ]
+        ).returncode
+        == 0
+    )
     if exists:
         git(cfg, "worktree", "add", str(path), branch)
     else:
@@ -188,8 +232,10 @@ def terminals_inside(path):
 def wt_guard(path):
     hits = terminals_inside(path)
     if hits:
-        raise SystemExit(f"refusing: live terminals still inside {path}: {', '.join(hits)} "
-                         f"(collect/kill them first)")
+        raise SystemExit(
+            f"refusing: live terminals still inside {path}: {', '.join(hits)} "
+            f"(collect/kill them first)"
+        )
 
 
 def wt_remove(cfg, path):
@@ -218,8 +264,10 @@ PROTOCOL = """
 ## Orchestration protocol (appended by orch.py; overrides nothing above)
 
 - Task id: `{id}`; role: `{role}`; you are a bounded worker, not the project owner.
-- Work only inside `{cwd}`. Do not modify `.planning/`. Do not start other agents or GSD orchestrators.
-{commit_rule}- Write your report to `{report}` (create folders as needed). Its last line must be exactly one of:
+- Work only inside `{cwd}`. Do not modify `.planning/`. Do not start other agents or GSD
+  orchestrators.
+{commit_rule}- Write your report to `{report}` (create folders as needed). Its last line must be
+  exactly one of:
   `Result: complete`, `Result: incomplete`, `Major issue: yes`, `Major issue: no`.
 - If a missing decision blocks you, stop and write the report with `Result: incomplete`.
 - Never approve permission dialogs on your own; wait for a person.
@@ -227,7 +275,9 @@ PROTOCOL = """
 """
 
 
-def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, base="HEAD", report=None):
+def dispatch(
+    cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, base="HEAD", report=None
+):
     if not ID_RE.match(tid):
         raise SystemExit(f"invalid task id {tid!r}: {ID_RE.pattern}")
     if task_path(cfg, tid).exists() and load_task(cfg, tid).get("state") == "running":
@@ -253,17 +303,30 @@ def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, b
         report = Path(cwd) / report
     parent = os.environ.get("HC_TERMINAL_ID")
     contract = runtime(cfg) / "tasks" / f"{tid}.md"
-    contract.write_text(body + PROTOCOL.format(
-        id=tid, role=role, cwd=cwd, report=report,
-        commit_rule=(f"- You are on branch `{branch}`. Do not run git commit: sandboxes often protect `.git`. "
-                     f"Leave changes in the tree; the owner commits them after reading your report.\n")
-        if branch else ""))
+    contract.write_text(
+        body
+        + PROTOCOL.format(
+            id=tid,
+            role=role,
+            cwd=cwd,
+            report=report,
+            commit_rule=(
+                f"- You are on branch `{branch}`. Do not run git commit: sandboxes often protect "
+                "`.git`. "
+                f"Leave changes in the tree; the owner commits them after reading your report.\n"
+            )
+            if branch
+            else "",
+        )
+    )
 
     argv = list(a["command"])
     if use_wt:
         common = git(cfg, "rev-parse", "--path-format=absolute", "--git-common-dir")
-        argv += [x.replace("{git_common_dir}", common).replace("{cwd}", str(cwd))
-                 for x in a.get("worktree_args", [])]
+        argv += [
+            x.replace("{git_common_dir}", common).replace("{cwd}", str(cwd))
+            for x in a.get("worktree_args", [])
+        ]
     # herdr-core starts programs with the core's environment, not the caller's:
     # carry PATH, proxies and locale explicitly.
     w = cfg["routing"].get("workers", {})
@@ -273,7 +336,12 @@ def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, b
     if a.get("prompt", "arg") == "arg":
         argv.append(first)
 
-    labels = {"orch.task": tid, "orch.role": role, "orch.agent": aid, "orch.project": project_name(cfg)}
+    labels = {
+        "orch.task": tid,
+        "orch.role": role,
+        "orch.agent": aid,
+        "orch.project": project_name(cfg),
+    }
     if w.get("show_in_app", True) and parent:
         try:
             space = (hc.get(parent).get("labels") or {}).get("herdr.space")
@@ -288,11 +356,25 @@ def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, b
         hc.wait(name, timeout=120)
         hc.send(name, first)
     startup = startup_check(name)
-    t = {"id": tid, "role": role, "weight": d["weight"], "agent": aid, "terminal": addr or name,
-         "startup": startup,
-         "name": name, "cwd": str(cwd), "branch": branch, "base": base_commit, "report": str(report),
-         "contract": str(contract), "parent": parent, "state": "running", "started_at": time.time(),
-         "independent": d["independent"], "reason": d["reason"]} | quota_mark(quotas.get(aid))
+    t = {
+        "id": tid,
+        "role": role,
+        "weight": d["weight"],
+        "agent": aid,
+        "terminal": addr or name,
+        "startup": startup,
+        "name": name,
+        "cwd": str(cwd),
+        "branch": branch,
+        "base": base_commit,
+        "report": str(report),
+        "contract": str(contract),
+        "parent": parent,
+        "state": "running",
+        "started_at": time.time(),
+        "independent": d["independent"],
+        "reason": d["reason"],
+    } | quota_mark(quotas.get(aid))
     save_task(cfg, t)
     return t
 
@@ -302,8 +384,15 @@ def quota_mark(q):
     if not quota.known(q):
         return {"quota_start": None, "quota_reset_at": None}
     names = (q.get("extra") or {}).get("gating_windows")
-    resets = [w.get("resets_at") for w in q["windows"] if (not names or w["name"] in names) and w.get("resets_at")]
-    return {"quota_start": q["effective_remaining_percent"], "quota_reset_at": min(resets) if resets else None}
+    resets = [
+        w.get("resets_at")
+        for w in q["windows"]
+        if (not names or w["name"] in names) and w.get("resets_at")
+    ]
+    return {
+        "quota_start": q["effective_remaining_percent"],
+        "quota_reset_at": min(resets) if resets else None,
+    }
 
 
 def quota_burn(cfg, t, now):
@@ -319,9 +408,14 @@ def quota_burn(cfg, t, now):
 
 def overlapped(cfg, t, now):
     acct = quota.account(cfg, t["agent"])
-    return any(o["id"] != t["id"] and o.get("agent") in cfg["agents"] and quota.account(cfg, o["agent"]) == acct
-               and (o.get("started_at") or 0) < now and (o.get("finished_at") or now) > t.get("started_at", now)
-               for o in all_tasks(cfg))
+    return any(
+        o["id"] != t["id"]
+        and o.get("agent") in cfg["agents"]
+        and quota.account(cfg, o["agent"]) == acct
+        and (o.get("started_at") or 0) < now
+        and (o.get("finished_at") or now) > t.get("started_at", now)
+        for o in all_tasks(cfg)
+    )
 
 
 def startup_check(name, seconds=25):
@@ -342,8 +436,11 @@ def startup_check(name, seconds=25):
         time.sleep(2)
     screen = hc.read(name, 0)
     tail = "\n".join(x for x in str(screen).splitlines() if x.strip())[-500:]
-    return {"ok": False, "why": "no agent status yet; it may wait for a person (trust/login dialog). "
-                                f"Answer it in Herdr App or `hc attach {name}`. Screen tail:\n{tail}"}
+    return {
+        "ok": False,
+        "why": "no agent status yet; it may wait for a person (trust/login dialog). "
+        f"Answer it in Herdr App or `hc attach {name}`. Screen tail:\n{tail}",
+    }
 
 
 def report_sentinel(path):
@@ -358,10 +455,19 @@ def evidence(cfg, t):
     """Durable evidence only: report sentinel, commits, clean tree."""
     ev = {"sentinel": report_sentinel(t["report"]), "report_exists": Path(t["report"]).exists()}
     if t.get("branch"):
-        ok = subprocess.run(["git", "-C", str(cfg["root"]), "rev-parse", "--verify", "--quiet",
-                             t["branch"]], capture_output=True).returncode == 0
-        ev["commits"] = int(git(cfg, "rev-list", "--count", f"{t['base']}..{t['branch']}")) if ok else 0
-        ev["clean"] = not git(cfg, "status", "--porcelain", cwd=t["cwd"]) if Path(t["cwd"]).exists() else None
+        ok = (
+            subprocess.run(
+                ["git", "-C", str(cfg["root"]), "rev-parse", "--verify", "--quiet", t["branch"]],
+                capture_output=True,
+            ).returncode
+            == 0
+        )
+        ev["commits"] = (
+            int(git(cfg, "rev-list", "--count", f"{t['base']}..{t['branch']}")) if ok else 0
+        )
+        ev["clean"] = (
+            not git(cfg, "status", "--porcelain", cwd=t["cwd"]) if Path(t["cwd"]).exists() else None
+        )
     return ev
 
 
@@ -369,7 +475,9 @@ def verdict(t, ev):
     if ev["sentinel"] is None:
         return "incomplete", "no report sentinel"
     if ev["sentinel"] not in OK_SENTINELS:
-        return ("complete" if ev["sentinel"] == "Major issue: yes" else "incomplete"), ev["sentinel"]
+        return ("complete" if ev["sentinel"] == "Major issue: yes" else "incomplete"), ev[
+            "sentinel"
+        ]
     if t.get("branch") and t["role"] == "execute":
         if not ev.get("commits"):
             return "incomplete", "report says complete but branch has no commits"
@@ -388,7 +496,12 @@ def collect(cfg, tid, keep_worker=False):
         except hc.HCError:
             live = False
         if live:
-            return {"task": tid, "state": "running", "why": "worker still live, no report yet", "evidence": ev}
+            return {
+                "task": tid,
+                "state": "running",
+                "why": "worker still live, no report yet",
+                "evidence": ev,
+            }
     # Keep a copy outside the worktree: it survives an abandoned worktree.
     backup = runtime(cfg) / "reports" / f"{tid}.md"
     if Path(t["report"]).exists():
@@ -399,7 +512,9 @@ def collect(cfg, tid, keep_worker=False):
     if t.get("branch") and Path(t["cwd"]).exists() and ev["sentinel"] in OK_SENTINELS:
         if git(cfg, "status", "--porcelain", cwd=t["cwd"]):
             git(cfg, "add", "-A", cwd=t["cwd"])
-            git(cfg, "commit", "-q", "-m", f"orch({tid}): {t['role']} by {t['agent']}", cwd=t["cwd"])
+            git(
+                cfg, "commit", "-q", "-m", f"orch({tid}): {t['role']} by {t['agent']}", cwd=t["cwd"]
+            )
             ev = evidence(cfg, t)
             state, why = verdict(t, ev)
     if not keep_worker:
@@ -410,7 +525,14 @@ def collect(cfg, tid, keep_worker=False):
         t.update(quota_burn=quota_burn(cfg, t, now), quota_shared=overlapped(cfg, t, now))
     t.update(state=state, verdict=why, evidence=ev, finished_at=now)
     save_task(cfg, t)
-    return {"task": tid, "state": state, "why": why, "evidence": ev, "report": t["report"], "backup": str(backup)}
+    return {
+        "task": tid,
+        "state": state,
+        "why": why,
+        "evidence": ev,
+        "report": t["report"],
+        "backup": str(backup),
+    }
 
 
 def refresh(cfg, terminals=None):
@@ -421,10 +543,12 @@ def refresh(cfg, terminals=None):
     for t in all_tasks(cfg):
         term = by_name.get(t.get("name"))
         st = (term or {}).get("status") or {}
-        t["live"] = {"state": (term or {}).get("state", "gone"),
-                     "status": st.get("state") if isinstance(st, dict) else st,
-                     "msg": st.get("msg") if isinstance(st, dict) else None,
-                     "address": (term or {}).get("address")}
+        t["live"] = {
+            "state": (term or {}).get("state", "gone"),
+            "status": st.get("state") if isinstance(st, dict) else st,
+            "msg": st.get("msg") if isinstance(st, dict) else None,
+            "address": (term or {}).get("address"),
+        }
         t["sentinel"] = report_sentinel(t["report"])
         out.append(t)
     return out

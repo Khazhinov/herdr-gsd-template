@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Orchestration CLI over herdr-core (`hc`) for a GSD owner.
 
-  quota [--refresh]                 normalized quota per agent
-  route ROLE [--heavy|--light]      routing decision with reason (no side effects)
-  prefer ROLE AGENT|-               manual override for the next routing of ROLE
-  dispatch TASK.md --role R --id ID start a worker (execute -> own worktree)
-  wait [--timeout S]                wait for worker news (hc wait --children any)
-  collect ID [--keep-worker]        judge durable evidence, stop the worker
-  status [--json]                   tasks, quotas, routing
-  watch                             live dashboard + publisher (run in a Herdr pane)
-  hub start|stop                    run `watch` in its own herdr-core terminal
-  worktree create|merge|remove|path ID
-  statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
-  gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
-  tools | tool-ask MODULE REQUEST   reusable tool agents (herdr-tool-agents hub)
+quota [--refresh]                 normalized quota per agent
+route ROLE [--heavy|--light]      routing decision with reason (no side effects)
+prefer ROLE AGENT|-               manual override for the next routing of ROLE
+dispatch TASK.md --role R --id ID start a worker (execute -> own worktree)
+wait [--timeout S]                wait for worker news (hc wait --children any)
+collect ID [--keep-worker]        judge durable evidence, stop the worker
+status [--json]                   tasks, quotas, routing
+watch                             live dashboard + publisher (run in a Herdr pane)
+hub start|stop                    run `watch` in its own herdr-core terminal
+worktree create|merge|remove|path ID
+statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
+gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
+tools | tool-ask MODULE REQUEST   reusable tool agents (herdr-tool-agents hub)
 """
+
 import argparse
 import json
 import os
@@ -48,8 +49,10 @@ def fmt_reset(ts):
 def quota_line(aid, q):
     if not q.get("available"):
         return f"{aid:<13} unknown  ({(q.get('extra') or {}).get('reason', '')})"
-    ws = "  ".join(f"{w['name']} {w['remaining_percent']:.0f}% (reset {fmt_reset(w.get('resets_at'))})"
-                   for w in q["windows"])
+    ws = "  ".join(
+        f"{w['name']} {w['remaining_percent']:.0f}% (reset {fmt_reset(w.get('resets_at'))})"
+        for w in q["windows"]
+    )
     flag = " STALE" if q.get("stale") else ""
     extra = q.get("extra") or {}
     if extra.get("reset_credits_available"):
@@ -59,6 +62,7 @@ def quota_line(aid, q):
 
 
 # ---------------------------------------------------------------- commands
+
 
 def cmd_quota(cfg, a):
     qs = quota.all_quotas(cfg, refresh=a.refresh)
@@ -88,8 +92,17 @@ def cmd_prefer(cfg, a):
 def cmd_dispatch(cfg, a):
     heavy = True if a.heavy else (False if a.light else None)
     wt = True if a.worktree else (False if a.no_worktree else None)
-    t = tasks.dispatch(cfg, a.task, a.role, a.id, agent=a.agent, heavy=heavy, worktree=wt,
-                       base=a.base, report=a.report)
+    t = tasks.dispatch(
+        cfg,
+        a.task,
+        a.role,
+        a.id,
+        agent=a.agent,
+        heavy=heavy,
+        worktree=wt,
+        base=a.base,
+        report=a.report,
+    )
     if not out(t, a.json):
         print(f"{t['id']}: {t['agent']} in {t['terminal']} cwd={t['cwd']}")
         print(f"reason: {t['reason']}")
@@ -100,7 +113,9 @@ def cmd_dispatch(cfg, a):
 
 def cmd_wait(cfg, a):
     r = hc.wait(children="any", timeout=a.timeout)
-    ready = [t["id"] for t in tasks.refresh(cfg) if t.get("state") == "running" and t.get("sentinel")]
+    ready = [
+        t["id"] for t in tasks.refresh(cfg) if t.get("state") == "running" and t.get("sentinel")
+    ]
     res = {"hc": r, "reports_ready": ready}
     if not out(res, a.json):
         print(json.dumps(r) if not isinstance(r, str) else r)
@@ -144,8 +159,11 @@ def cmd_statusline_tap(a):
     raw = sys.stdin.read()
     try:
         data = json.loads(raw)
-        snap = {"observed_at": time.time(), "rate_limits": data.get("rate_limits"),
-                "session_id": data.get("session_id")}
+        snap = {
+            "observed_at": time.time(),
+            "rate_limits": data.get("rate_limits"),
+            "session_id": data.get("session_id"),
+        }
         quota.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         tmp = quota.CLAUDE_SNAPSHOT.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(snap))
@@ -157,14 +175,20 @@ def cmd_statusline_tap(a):
         # Default chain: the user's own global statusline, so the project-level
         # tap changes nothing visible.
         try:
-            g = json.loads((Path.home() / ".claude" / "settings.json").read_text()).get("statusLine") or {}
+            g = (
+                json.loads((Path.home() / ".claude" / "settings.json").read_text()).get(
+                    "statusLine"
+                )
+                or {}
+            )
             if g.get("command") and "statusline-tap" not in g["command"]:
                 cmd = [g["command"]]
         except (OSError, json.JSONDecodeError):
             pass
     if cmd:
-        p = subprocess.run(cmd if len(cmd) > 1 else ["sh", "-c", cmd[0]], input=raw, text=True,
-                           capture_output=True)
+        p = subprocess.run(
+            cmd if len(cmd) > 1 else ["sh", "-c", cmd[0]], input=raw, text=True, capture_output=True
+        )
         sys.stdout.write(p.stdout)
     return 0
 
@@ -177,8 +201,10 @@ def cmd_gsd_cross_ai(cfg, a):
     prompt = sys.stdin.read()
     tid = "gsd-" + datetime.now().strftime("%m%d-%H%M%S")
     task = tasks.runtime(cfg) / "tasks" / f"{tid}.prompt.md"
-    task.write_text(prompt + "\n\nWrite the report as a GSD SUMMARY.md for this plan "
-                    "(title heading, what was done, files changed, verification).\n")
+    task.write_text(
+        prompt + "\n\nWrite the report as a GSD SUMMARY.md for this plan "
+        "(title heading, what was done, files changed, verification).\n"
+    )
     t = tasks.dispatch(cfg, task, "execute", tid, worktree=False)
     print(f"cross-ai: {t['agent']} in {t['terminal']}", file=sys.stderr)
     while True:
@@ -210,13 +236,20 @@ def hub_dir(cfg):
 def cmd_tools(cfg, a, ask=False):
     h = hub_dir(cfg)
     if not h or not (h / "tool_ask.py").exists():
-        raise SystemExit("tool hub not configured: set HERDR_TOOL_AGENTS or [tools] hub in routing.local.toml")
+        raise SystemExit(
+            "tool hub not configured: set HERDR_TOOL_AGENTS or [tools] hub in routing.local.toml"
+        )
     args = [sys.executable, str(h / "tool_ask.py")]
-    args += ["ask", a.module, a.request, *(["--write"] if a.write else []), "--timeout", str(a.timeout)] if ask else ["list"]
+    args += (
+        ["ask", a.module, a.request, *(["--write"] if a.write else []), "--timeout", str(a.timeout)]
+        if ask
+        else ["list"]
+    )
     return subprocess.call(args)
 
 
 # ---------------------------------------------------------------- dashboard
+
 
 def bar(pct, width=20):
     if pct is None:
@@ -228,12 +261,22 @@ def bar(pct, width=20):
 def render(s, color=True):
     def c(code, x):
         return f"\x1b[{code}m{x}\x1b[0m" if color else x
-    L = [c("1", f"GSD MISSION CONTROL  {s['project']}  owner={s['owner']}  "
-               f"{datetime.fromtimestamp(s['updated_at']).strftime('%H:%M:%S')}")]
+
+    L = [
+        c(
+            "1",
+            f"GSD MISSION CONTROL  {s['project']}  owner={s['owner']}  "
+            f"{datetime.fromtimestamp(s['updated_at']).strftime('%H:%M:%S')}",
+        )
+    ]
     L.append("")
     L.append(c("1", "ROUTING"))
     for role, d in s["routing"].items():
-        ind = "" if d["independent"] is None else ("  independent" if d["independent"] else "  NOT independent")
+        ind = (
+            ""
+            if d["independent"] is None
+            else ("  independent" if d["independent"] else "  NOT independent")
+        )
         L.append(f"  {role:<9} {(d['selected'] or 'NONE'):<13} {d['weight']:<6}{ind}")
     for role, ag in (s.get("override") or {}).items():
         L.append(c("33", f"  override: {role} -> {ag}"))
@@ -245,8 +288,10 @@ def render(s, color=True):
             continue
         eff = q["effective_remaining_percent"] or 0
         col = "31" if eff <= 15 else ("33" if eff <= 35 else "32")
-        ws = " ".join(f"{w['name']}:{w['remaining_percent']:.0f}%/{fmt_reset(w.get('resets_at'))}"
-                      for w in q["windows"])
+        ws = " ".join(
+            f"{w['name']}:{w['remaining_percent']:.0f}%/{fmt_reset(w.get('resets_at'))}"
+            for w in q["windows"]
+        )
         st = c("31", " STALE") if q.get("stale") else ""
         L.append(f"  {aid:<13} {c(col, bar(eff))} {eff:>3.0f}%  {ws}  hr={q.get('headroom')}{st}")
     L.append("")
@@ -255,10 +300,19 @@ def render(s, color=True):
     done = [t for t in s["tasks"] if t.get("state") != "running"][-6:]
     for t in running:
         lv = t.get("live") or {}
-        L.append(f"  > {t['id']:<22} {t['role']:<8} {t['agent']:<13} {lv.get('status') or lv.get('state'):<8} "
-                 f"{lv.get('address') or ''} {(lv.get('msg') or '')[:50]}")
+        L.append(
+            f"  > {t['id']:<22} {t['role']:<8} {t['agent']:<13} "
+            f"{lv.get('status') or lv.get('state'):<8} "
+            f"{lv.get('address') or ''} {(lv.get('msg') or '')[:50]}"
+        )
     for t in done:
-        L.append(c("2", f"    {t['id']:<22} {t['role']:<8} {t['agent']:<13} {t.get('state'):<10} {t.get('verdict') or ''}"))
+        L.append(
+            c(
+                "2",
+                f"    {t['id']:<22} {t['role']:<8} {t['agent']:<13} "
+                f"{t.get('state'):<10} {t.get('verdict') or ''}",
+            )
+        )
     if not s["tasks"]:
         L.append("  none")
     if s.get("tools"):
@@ -271,13 +325,17 @@ def render(s, color=True):
         L.append("")
         L.append(c("1", "GSD"))
         if p.get("available"):
-            L.append(f"  milestone {p.get('milestone')}  phase {p.get('phase')}  plan {p.get('plan')}  "
-                     f"status {p.get('status')}")
+            L.append(
+                f"  milestone {p.get('milestone')}  phase {p.get('phase')}  plan {p.get('plan')}  "
+                f"status {p.get('status')}"
+            )
             for ph in p.get("phases", [])[-4:]:
                 pl = ph.get("plans") or []
                 donep = sum(1 for x in pl if x["complete"])
-                L.append(f"  {'x' if ph['complete'] else ' '} {ph['id']:<5} plans {donep}/{len(pl)}  "
-                         f"verify {ph.get('verification')}")
+                L.append(
+                    f"  {'x' if ph['complete'] else ' '} {ph['id']:<5} plans {donep}/{len(pl)}  "
+                    f"verify {ph.get('verification')}"
+                )
         else:
             L.append(f"  {p.get('reason')}")
     return "\n".join(L)
@@ -297,7 +355,11 @@ def cmd_watch(cfg, a):
     def on_event(msg):
         p = msg.get("params") or {}
         # Our own doc writes and label updates would otherwise wake us forever.
-        if msg.get("method") != "event" or p.get("type") not in relevant or p.get("terminal") == hub:
+        if (
+            msg.get("method") != "event"
+            or p.get("type") not in relevant
+            or p.get("terminal") == hub
+        ):
             return
         # Other projects' hubs relabel themselves on every publish; reacting to
         # them would make hubs wake each other forever.
@@ -322,7 +384,9 @@ def cmd_watch(cfg, a):
     plan_mtime = None
     while True:
         # Events wake the loop at once; otherwise wake for the next quota refresh.
-        changed = dirty.wait(timeout=max(1.0, min(5 if rpc is None else 15, interval - (time.time() - last_q))))
+        changed = dirty.wait(
+            timeout=max(1.0, min(5 if rpc is None else 15, interval - (time.time() - last_q)))
+        )
         dirty.clear()
         # Without the event stream every wake may hide a change.
         changed = changed or rpc is None
@@ -347,8 +411,9 @@ def cmd_watch(cfg, a):
         except (OSError, hc.HCError):
             terms = []
         watched.clear()
-        watched.update(t["address"] for t in terms
-                       if {"orch.task", "orch.tool"} & set((t.get("labels") or {})))
+        watched.update(
+            t["address"] for t in terms if {"orch.task", "orch.tool"} & set(t.get("labels") or {})
+        )
         s = state.compose(cfg, quotas, with_planning=False, terminals=terms)
         s["planning"] = plan
         rev += 1
@@ -380,8 +445,15 @@ def cmd_hub(cfg, a):
     # Control panel is its view.
     labels = {"orch.project": config.project_name(cfg)}
     keep = cfg["routing"].get("workers", {}).get("pass_env", tasks.DEFAULT_PASS_ENV)
-    argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ],
-            sys.executable, str(Path(__file__).resolve()), "--root", str(cfg["root"]), "watch"]
+    argv = [
+        "env",
+        *[f"{k}={os.environ[k]}" for k in keep if k in os.environ],
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--root",
+        str(cfg["root"]),
+        "watch",
+    ]
     r = hc.run(argv, name, cfg["root"], labels, no_parent=True)
     print(f"{name} started as {r.get('address') if isinstance(r, dict) else r}")
     return 0
@@ -389,8 +461,11 @@ def cmd_hub(cfg, a):
 
 # ---------------------------------------------------------------- main
 
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--root", help="project root (default: this repository)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

@@ -9,6 +9,7 @@ runtime files. Owns only marked blocks and one settings key:
 The tap chains to the user's global statusline, so nothing visible changes.
 An existing project statusLine is kept and chained after the tap.
 """
+
 import json
 import re
 import shlex
@@ -22,11 +23,17 @@ claude.parent.mkdir(parents=True, exist_ok=True)
 block = (root / ".orchestration/claude-owner-block.md").read_text().strip()
 text = claude.read_text() if claude.exists() else ""
 pat = re.compile(r"<!-- GSD-HERDR-STARTER:BEGIN -->.*?<!-- GSD-HERDR-STARTER:END -->", re.S)
-text = pat.sub(lambda _m: block, text) if pat.search(text) else text.rstrip() + ("\n\n" if text.strip() else "") + block + "\n"
+text = (
+    pat.sub(lambda _m: block, text)
+    if pat.search(text)
+    else text.rstrip() + ("\n\n" if text.strip() else "") + block + "\n"
+)
 claude.write_text(text)
 
 settings = root / ".claude/settings.json"
-data = json.loads(settings.read_text()) if settings.exists() and settings.read_text().strip() else {}
+data = (
+    json.loads(settings.read_text()) if settings.exists() and settings.read_text().strip() else {}
+)
 tap = 'python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/orch.py" statusline-tap'
 cur = (data.get("statusLine") or {}).get("command", "")
 if "statusline-tap" not in cur:
@@ -56,14 +63,21 @@ else:
     if (begin not in text or end not in text) and "managed by gsd-core installer" in text:
         # GSD is installed for Codex too (an owner-capable Codex). The GSD
         # installer owns [agents]; the worker contract forbids fan-out instead.
-        print("note: .codex/config.toml is managed by the GSD installer; worker fan-out block skipped")
+        print(
+            "note: .codex/config.toml is managed by the GSD installer; worker fan-out block skipped"
+        )
     elif begin not in text or end not in text:
-        print("Codex config exists but the starter marker block is missing.\n"
-              "Merge the block from scripts/reconcile-runtime-config.py into .codex/config.toml "
-              "(without duplicating [agents] tables), then rerun.", file=sys.stderr)
+        print(
+            "Codex config exists but the starter marker block is missing.\n"
+            "Merge the block from scripts/reconcile-runtime-config.py into .codex/config.toml "
+            "(without duplicating [agents] tables), then rerun.",
+            file=sys.stderr,
+        )
         raise SystemExit(3)
     else:
-        text = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: managed, text, flags=re.S)
+        text = re.sub(
+            re.escape(begin) + r".*?" + re.escape(end), lambda _m: managed, text, flags=re.S
+        )
         codex.write_text(text.rstrip() + "\n")
 
 print("runtime config reconciled")
