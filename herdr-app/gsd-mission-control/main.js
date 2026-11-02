@@ -8,16 +8,15 @@
 //   and bumps its orch.rev label on every change. Herdr re-renders mods when
 //   terminals() change, so a new revision arrives here at once and the mod reads
 //   state.json from the hub's machine. Worker status comes from terminals()
-//   (OSC 7501); the screen tail of running workers is read every few seconds.
+//   (OSC 7501).
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { terminals, spaces, panes, layout, theme, settings, run, exec, hc, readTextFile, notify } from "herdr";
+import { terminals, spaces, panes, layout, theme, run, exec, readTextFile, notify } from "herdr";
 
 const NODE = "mission-control";
 const STATE_SUFFIX = "/.orchestration/runtime/state.json";
 const ROLES = [["execute", "exec"], ["review", "review"], ["plan", "plan"], ["research", "research"], ["debug", "debug"]];
 const PROVIDERS = { claude: "Claude", codex: "Codex" };
-const TAIL_MS = 4000;
 
 // ---------------------------------------------------------------- helpers
 
@@ -50,7 +49,6 @@ function formatWith(pattern, d, days) {
 export default class MissionControl extends View {
   init(_props, cx) {
     this.states = {};
-    this.tails = {};
     this.open = {};
     this.shown = undefined;
     this.fmt = { time: "HH:mm", date: "dd.MM", days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] };
@@ -70,7 +68,6 @@ export default class MissionControl extends View {
       } catch (_) { /* not Windows: keep the 24-hour default */ }
     });
     cx.timer.every(30000, (cx) => cx.notify());
-    cx.timer.every(TAIL_MS, (cx) => this.refreshTails(cx));
   }
 
   resetAt(ts) {
@@ -132,25 +129,6 @@ export default class MissionControl extends View {
     });
   }
 
-  workers() {
-    return this.liveWorkers || [];
-  }
-
-  refreshTails(cx) {
-    const ws = this.workers();
-    if (!this.shown || !ws.length) return;
-    cx.spawn(async (cx) => {
-      for (const w of ws) {
-        try {
-          const r = await hc(["read", w.address]);
-          const lines = r.stdout.split(/\r?\n/).map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim());
-          this.tails[w.address] = lines.slice(-4);
-        } catch (_) { /* terminal gone: next render drops it */ }
-      }
-      cx.notify();
-    });
-  }
-
   orch(hub, args, cx) {
     const data = this.states[hub.address]?.data;
     if (!data) return;
@@ -171,7 +149,6 @@ export default class MissionControl extends View {
       .px(12).py(10).gap(14).overflow_y_scrollbar()
       .on_size_change((size) => { if (size.width > 120) this.openWidth = Math.round(size.width); });
     if (!hub) {
-      this.liveWorkers = [];
       return root.child(div().text_color(t.dim).child("No orchestration hub here. Template project: python3 scripts/orch.py hub start"));
     }
     this.load(hub, cx);
@@ -186,7 +163,6 @@ export default class MissionControl extends View {
       if (id && term.labels["orch.project"] === s.project && term.state === "live") termByTask[id] = term;
     }
     const running = s.tasks.filter((x) => x.state === "running");
-    this.liveWorkers = running.map((x) => termByTask[x.id]).filter(Boolean);
     const p = s.planning && s.planning.available ? s.planning : null;
 
     root.child(this.header(s, p, hub, t));
@@ -240,37 +216,27 @@ export default class MissionControl extends View {
     return { working: t.working, blocked: t.blocked, done: t.done, idle: t.idle, error: t.blocked }[s] || t.unknown;
   }
 
-  // ---- active workers: expanded, with what they are doing right now
+  // ---- active workers: one compact row each, status + what the agent says
   workerCard(x, term, m, t) {
     const addr = term ? term.address : qualify(m, x.live && x.live.address);
     // Programs that report no OSC status have status null.
     const status = (term ? term.status : x.live && x.live.status) || (term ? "running" : "gone");
     const msg = term && term.report && term.report.msg;
-    const tail = (addr && this.tails[addr]) || [];
     const elapsed = x.started_at ? span(Date.now() / 1000 - x.started_at) : "";
-    const card = v_flex().id(`w-${x.id}`).gap(4).p(8).rounded(8).bg(t.background)
-      .border(1).border_color(status === "blocked" ? t.blocked : t.border)
+    const icon = (id, label, fn, color) => div().id(id).px(6).rounded(5).text_size(11).text_color(color || t.muted)
+      .hover((el) => el.bg(t.hover).text_color(color || t.foreground)).on_click(fn).child(label);
+    return v_flex().id(`w-${x.id}`).gap(1).px(6).py(4).rounded(6).hover((el) => el.bg(t.hover))
+      .when(status === "blocked", (el) => el.bg(t.surface))
       .child(h_flex().items_center().gap(6)
         .child(this.dot(this.statusColor(status, t)))
-        .child(div().font_semibold().truncate().child(x.id))
-        .child(div().flex_1())
-        .child(this.pill(x.agent, t))
-        .child(div().text_size(11).text_color(t.dim).child(`${x.role} · ${elapsed}`)));
-    card.child(div().text_color(status === "blocked" ? t.blocked : t.muted).truncate()
-      .child(msg || (status === "blocked" ? "waiting for a person" : status)));
-    if (tail.length) {
-      card.child(v_flex().p(6).rounded(6).bg(t.surface).font_family(settings().font_family || "monospace")
-        .text_size(10.5).text_color(t.dim)
-        .children(tail.map((l) => div().truncate().child(l))));
-    }
-    if (term && addr) {
-      card.child(h_flex().gap(6)
-        .child(this.button(`o-${x.id}`, "Open", t, () => run("agent.focus", { terminal: addr })))
-        .child(this.button(`p-${x.id}`, "Peek", t, () => run("terminal.peek", { terminal: addr })))
-        .child(div().flex_1())
-        .child(this.button(`k-${x.id}`, "Stop", t, () => run("terminal.kill", { terminal: addr }), t.blocked)));
-    }
-    return card;
+        .child(div().font_semibold().child(x.id))
+        .child(div().flex_1().truncate().text_color(status === "blocked" ? t.blocked : t.muted)
+          .child(msg || (status === "blocked" ? "waiting for a person" : status)))
+        .when(Boolean(term && addr), (el) => el
+          .child(icon(`o-${x.id}`, "open", () => run("agent.focus", { terminal: addr })))
+          .child(icon(`p-${x.id}`, "peek", () => run("terminal.peek", { terminal: addr })))
+          .child(icon(`k-${x.id}`, "stop", () => run("terminal.kill", { terminal: addr }), t.blocked))))
+      .child(div().pl(13).text_size(10.5).text_color(t.dim).child(`${x.agent} · ${x.role} · ${elapsed}`));
   }
 
   // ---- nearest plans that are neither done nor running
