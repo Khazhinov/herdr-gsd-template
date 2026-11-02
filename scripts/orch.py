@@ -54,6 +54,7 @@ def quota_line(aid, q):
         return f"{aid:<13} unknown  ({(q.get('extra') or {}).get('reason', '')})"
     ws = "  ".join(
         f"{w['name']} {w['remaining_percent']:.0f}% (reset {fmt_reset(w.get('resets_at'))})"
+        if w['remaining_percent'] is not None else f"{w['name']} ?% (reset {fmt_reset(w.get('resets_at'))})"
         for w in q["windows"]
     )
     flag = " STALE" if q.get("stale") else ""
@@ -105,6 +106,8 @@ def cmd_dispatch(cfg, a):
         worktree=wt,
         base=a.base,
         report=a.report,
+        replace=a.replace,
+        of=a.of,
     )
     if not out(t, a.json):
         print(f"{t['id']}: {t['agent']} in {t['terminal']} cwd={t['cwd']}")
@@ -568,6 +571,8 @@ def main(argv=None):
     s.add_argument("--no-worktree", action="store_true")
     s.add_argument("--base", default="HEAD")
     s.add_argument("--report")
+    s.add_argument("--replace", action="store_true")
+    s.add_argument("--of", help="task id whose author account must be excluded for review")
     s = p("wait")
     s.add_argument("--timeout", type=int, default=180)
     s = p("collect")

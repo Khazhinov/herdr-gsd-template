@@ -2,6 +2,10 @@
 
 ## 0.2.0 - 2026-11-02
 
+- Account-wide admission ledger with locked dispatch, per-window quota projections and cost samples,
+  owner reserve, vendor denial handling, and unknown post-reset windows.
+- Collect stops workers before committing; merge preflights conflicts and protects `.planning/`.
+  Duplicate task ids require `--replace`; `dispatch --of` routes reviews away from the author account.
 - Quota-aware admission: the reserve is checked against the projection after the task
   (measured per-task spend, spend still ahead of running tasks on the same account).
   `collect` records `quota_burn`; Mission Control shows the per-task cost under Limits.

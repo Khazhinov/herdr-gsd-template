@@ -37,12 +37,12 @@ def unknown(agent, reason, source=None):
 def window(name, used, resets_at, minutes, now):
     used = max(0.0, min(100.0, float(used)))
     resets_at = float(resets_at) if resets_at else None
-    # A window whose reset already passed has refilled since the observation.
-    remaining = 100.0 if resets_at and resets_at <= now else 100.0 - used
+    # A reset needs a new observation; the old reading cannot prove a refill.
+    remaining = None if resets_at and resets_at <= now else 100.0 - used
     return {
         "name": name,
         "used_percent": round(used, 1),
-        "remaining_percent": round(remaining, 1),
+        "remaining_percent": round(remaining, 1) if remaining is not None else None,
         "resets_at": resets_at,
         "window_minutes": minutes,
     }
@@ -56,8 +56,10 @@ def label(minutes, fallback):
 
 def finish(res, stale_after_s, now):
     ws = res["windows"]
-    res["effective_remaining_percent"] = min(w["remaining_percent"] for w in ws) if ws else None
-    res["available"] = bool(ws)
+    values = [w["remaining_percent"] for w in ws]
+    res["effective_remaining_percent"] = min(values) if values and None not in values else None
+    res["available"] = bool(ws) and None not in values
+    res["stale"] = False
     if res["observed_at"] and stale_after_s and now - res["observed_at"] > stale_after_s:
         res["stale"] = True
     return res
@@ -69,9 +71,7 @@ def finish(res, stale_after_s, now):
 def codex_rpc(timeout=15.0, argv=None):
     """Ask the Codex app-server for live account rate limits (one JSON-RPC call)."""
     argv = argv or ["codex", "app-server"]
-    p = subprocess.Popen(
-        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-    )
+    p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         msgs = [
             {
@@ -83,28 +83,34 @@ def codex_rpc(timeout=15.0, argv=None):
             {"jsonrpc": "2.0", "method": "initialized"},
             {"jsonrpc": "2.0", "id": 2, "method": "account/rateLimits/read"},
         ]
-        p.stdin.write("".join(json.dumps(m) + "\n" for m in msgs))
+        p.stdin.write("".join(json.dumps(m) + "\n" for m in msgs).encode())
         p.stdin.flush()
         deadline = time.time() + timeout
+        buf = b""
         while time.time() < deadline:
-            r, _, _ = select.select([p.stdout], [], [], max(0.0, deadline - time.time()))
+            r, _, _ = select.select([p.stdout.fileno()], [], [], max(0.0, deadline - time.time()))
             if not r:
                 break
-            line = p.stdout.readline()
-            if not line:
+            chunk = os.read(p.stdout.fileno(), 65536)
+            if not chunk:
                 break
-            try:
-                o = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if o.get("id") == 2:
-                if "error" in o:
-                    raise RuntimeError(o["error"].get("message", "rpc error"))
-                return o["result"]
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    o = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if o.get("id") == 2:
+                    if "error" in o:
+                        raise RuntimeError(o["error"].get("message", "rpc error"))
+                    return o["result"]
         raise TimeoutError("codex app-server did not answer account/rateLimits/read")
     finally:
         p.kill()
         p.wait()
+        p.stdin.close()
+        p.stdout.close()
 
 
 def codex_from_rpc(result, now):
@@ -116,6 +122,12 @@ def codex_from_rpc(result, now):
             m = w.get("windowDurationMins")
             ws.append(window(label(m, fallback), w["usedPercent"], w.get("resetsAt"), m, now))
     credits = (result.get("rateLimitResetCredits") or {}).get("credits") or []
+    denied = result.get("ordinaryUsageAllowed") is False or bool(rl.get("rateLimitReachedType"))
+    if denied:
+        if not ws:
+            ws = [window("denied", 100, None, None, now)]
+        for w in ws:
+            w["remaining_percent"] = 0.0
     return {
         "agent": "codex",
         "available": True,
@@ -263,6 +275,10 @@ def probe_claude(now, stale_after_s, snapshot=None):
 def probe_static(agent, spec, now):
     if not isinstance(spec, dict) or spec.get("remaining_percent") is None:
         return unknown(agent, "quota = static but quota_static.remaining_percent is not set")
+    reset = float(spec["resets_at"]) if spec.get("resets_at") else None
+    period = spec.get("period_minutes")
+    if reset and reset <= now and period:
+        reset += (int((now - reset) // (period * 60)) + 1) * period * 60
     res = {
         "agent": agent,
         "available": True,
@@ -272,7 +288,7 @@ def probe_static(agent, spec, now):
         "stale": False,
         "windows": [
             window(
-                "budget", 100 - float(spec["remaining_percent"]), spec.get("resets_at"), None, now
+                "budget", 100 - float(spec["remaining_percent"]), reset, period, now
             )
         ],
         "extra": {},
@@ -308,15 +324,24 @@ def probe(cfg, aid, now=None, shared=None):
         res = probe_static(aid, a.get("quota_static"), now)
     else:
         return unknown(aid, "no quota probe for this agent")
+    return gate(cfg, aid, res)
+
+
+def gate(cfg, aid, res):
+    """Apply this project's window selection to an account's raw reading."""
+    res = json.loads(json.dumps(res))
+    res["agent"] = aid
     # Routing may consider only some windows (e.g. a team that watches the
     # weekly window by hand). Other windows stay visible but do not gate.
-    names = a.get("quota_windows")
+    names = cfg["agents"][aid].get("quota_windows")
     if names and res["windows"]:
         gating = [w for w in res["windows"] if w["name"] in names]
         res["effective_remaining_percent"] = (
-            min(w["remaining_percent"] for w in gating) if gating else None
+            min(w["remaining_percent"] for w in gating)
+            if gating and all(w["remaining_percent"] is not None for w in gating) else None
         )
         res["extra"]["gating_windows"] = names
+        res["available"] = res["effective_remaining_percent"] is not None
     return res
 
 
@@ -328,16 +353,32 @@ def all_quotas(cfg, max_age=60.0, refresh=False):
         cache = json.loads(QUOTA_CACHE.read_text())
     except (OSError, json.JSONDecodeError):
         pass
-    out, changed, shared = {}, False, {}
+    out, changed, refreshed = {}, False, set()
     for aid in cfg["agents"]:
-        c = cache.get(aid)
-        if not refresh and c and now - c.get("probed_at", 0) < max_age:
-            out[aid] = c
+        kind = cfg["agents"][aid].get("quota", "none")
+        if kind == "static":
+            out[aid] = probe_static(aid, cfg["agents"][aid].get("quota_static"), now)
             continue
-        q = probe(cfg, aid, now, shared)
-        q["probed_at"] = now
-        out[aid] = cache[aid] = q
-        changed = True
+        key = account(cfg, aid)
+        c = cache.get(key)
+        if key not in refreshed and (refresh or not c or now - c.get("probed_at", 0) >= max_age):
+            if kind == "codex":
+                c = probe_codex(now, 0)
+            elif kind == "claude":
+                c = probe_claude(now, 0)
+            else:
+                c = unknown(aid, "no quota probe for this agent")
+            c["probed_at"] = now
+            cache[key] = c
+            changed = True
+            refreshed.add(key)
+        c = json.loads(json.dumps(c))
+        c.setdefault("extra", {}).pop("gating_windows", None)
+        for w in c["windows"]:
+            if w.get("resets_at") and w["resets_at"] <= now:
+                w["remaining_percent"] = None
+        c = finish(c, 60 * cfg["routing"].get("unknown_quota", {}).get("stale_after_minutes", 30), now)
+        out[aid] = gate(cfg, aid, c)
     if changed:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
         # Shared by every project: unique temp name per writer.
@@ -364,6 +405,6 @@ def headroom(q, now=None):
     now = now or time.time()
     names = (q.get("extra") or {}).get("gating_windows")
     ws = [w for w in q["windows"] if not names or w["name"] in names] or q["windows"]
-    w = min(ws, key=lambda w: w["remaining_percent"])
+    w = min(ws, key=lambda w: w["remaining_percent"] if w["remaining_percent"] is not None else float("inf"))
     hours = max(1.0, ((w.get("resets_at") or now + 3600 * 24 * 7) - now) / 3600)
     return round(w["remaining_percent"] / hours, 2)

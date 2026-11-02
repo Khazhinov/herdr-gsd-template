@@ -71,9 +71,19 @@ def validate(cfg):
             )
         if a.get("stability") not in STABILITY:
             raise ConfigError(f"{where}.stability must be one of {sorted(STABILITY)}")
+        period = (a.get("quota_static") or {}).get("period_minutes")
+        if period is not None and (not isinstance(period, (int, float)) or period <= 0):
+            raise ConfigError(f"{where}.quota_static.period_minutes must be positive")
     owner = r.get("owner")
     if owner not in agents or "owner" not in agents[owner]["capabilities"]:
         raise ConfigError(f"routing.owner {owner!r} is not an agent with the owner capability")
+    owner_reserve = r.get("owner_reserve_percent", 10)
+    if not isinstance(owner_reserve, (int, float)) or not 0 <= owner_reserve < 100:
+        raise ConfigError("routing.owner_reserve_percent must be between 0 and 100")
+    for acct, spec in r.get("accounts", {}).items():
+        cap = spec.get("max_parallel")
+        if cap is not None and (type(cap) is not int or cap < 1):
+            raise ConfigError(f"routing.accounts.{acct}.max_parallel must be a positive integer")
     for role, pol in r.get("roles", {}).items():
         if role not in ROLES:
             raise ConfigError(f"routing.roles.{role}: unknown role")

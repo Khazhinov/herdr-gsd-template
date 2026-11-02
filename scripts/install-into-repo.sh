@@ -4,7 +4,7 @@ TARGET=${1:?usage: install-into-repo.sh /path/to/repo}
 SOURCE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TARGET=$(cd "$TARGET" && pwd)
 
-[[ -d "$TARGET/.git" ]] || { echo "target is not a git repo" >&2; exit 2; }
+git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1 || { echo "target is not a git repo" >&2; exit 2; }
 
 MR="$TARGET/.orchestration/merge-required"
 mkdir -p "$MR"

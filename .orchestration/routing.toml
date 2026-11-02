@@ -7,6 +7,7 @@ owner = "claude"
 
 # Stability levels that automatic routing may choose.
 auto_stability = ["supported"]
+owner_reserve_percent = 10
 
 [roles.execute]
 # ordered: first eligible agent in chain.
@@ -44,7 +45,8 @@ heavy = true
 # The check uses the projection after the task: remaining - spend still ahead
 # of running tasks on the same account - this task's cost. The cost is measured
 # by `collect` (median of the last 5 tasks that ran alone on the account);
-# until then <weight>_cost_percent applies (default 0).
+# until then <weight>_cost_percent applies as an initial estimate.
+# Optional [accounts.<account>] max_parallel limits all agent variants on one account.
 [reserves.codex]
 heavy_stop_percent = 30
 light_stop_percent = 10
@@ -56,6 +58,8 @@ light_stop_percent = 10
 [reserves.default]
 heavy_stop_percent = 30
 light_stop_percent = 10
+heavy_cost_percent = 15
+light_cost_percent = 3
 
 [unknown_quota]
 # deny: an agent without a trustworthy quota reading never gets heavy work
