@@ -38,7 +38,7 @@ command = ["codex", "--no-daemon"]
 # checkout explicitly (Codex trusts per git root, a worktree is a new root).
 worktree_args = ["--add-dir", "{git_common_dir}", "-c", 'projects."{cwd}".trust_level="trusted"']
 prompt = "arg"
-capabilities = ["execute", "review", "research", "debug"]
+capabilities = ["owner", "plan", "execute", "review", "research", "debug"]
 cost_tier = "premium"
 quota = "codex"
 stability = "supported"

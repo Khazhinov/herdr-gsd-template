@@ -220,7 +220,7 @@ class Config(unittest.TestCase):
 
     def test_owner_needs_capability(self):
         c = cfg()
-        c["routing"]["owner"] = "codex"
+        c["routing"]["owner"] = "kimi"
         with self.assertRaisesRegex(config.ConfigError, "owner"):
             config.validate(c)
 

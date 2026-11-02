@@ -77,7 +77,7 @@ def all_tasks(cfg):
     for p in sorted((runtime(cfg) / "tasks").glob("*.json")):
         try:
             out.append(json.loads(p.read_text()))
-        except json.JSONDecodeError:
+        except (OSError, json.JSONDecodeError):  # removed or replaced by another process meanwhile
             pass
     return out
 

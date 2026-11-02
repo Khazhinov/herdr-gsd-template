@@ -14,5 +14,6 @@ python3 ./tests/test_reconcile.py
 
 echo "== routing, quotas, worker lifecycle (fake herdr-core) =="
 python3 ./tests/test_orch.py
+python3 ./tests/test_advice.py
 
 echo "template test suite: PASS"

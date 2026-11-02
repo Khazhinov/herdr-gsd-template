@@ -14,11 +14,14 @@ worktree create|merge|remove|path ID
 statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
 gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
 tools | tool-ask MODULE REQUEST   reusable tool agents (herdr-tool-agents hub)
+advice                            compact/clear, owner handoff, template update hints
+owner set AGENT [--launch]        hand the owner role to another agent
 """
 
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -27,7 +30,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from orchlib import config, hc, quota, state, tasks  # noqa: E402
+from orchlib import advice, config, hc, quota, state, tasks  # noqa: E402
 
 
 def out(obj, as_json):
@@ -159,11 +162,14 @@ def cmd_statusline_tap(a):
     raw = sys.stdin.read()
     try:
         data = json.loads(raw)
+        advice.record_session(data)
         snap = {
             "observed_at": time.time(),
             "rate_limits": data.get("rate_limits"),
             "session_id": data.get("session_id"),
         }
+        if not snap["rate_limits"]:
+            raise OSError("no rate_limits yet: keep the previous snapshot")
         quota.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         tmp = quota.CLAUDE_SNAPSHOT.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(snap))
@@ -414,10 +420,14 @@ def cmd_watch(cfg, a):
         watched.update(
             t["address"] for t in terms if {"orch.task", "orch.tool"} & set(t.get("labels") or {})
         )
-        s = state.compose(cfg, quotas, with_planning=False, terminals=terms)
-        s["planning"] = plan
-        rev += 1
-        state.publish(cfg, s, hub=hub, rev=rev)
+        try:
+            s = state.compose(cfg, quotas, with_planning=False, terminals=terms)
+            s["planning"] = plan
+            rev += 1
+            state.publish(cfg, s, hub=hub, rev=rev)
+        except Exception as e:  # noqa: BLE001 - one bad snapshot must not stop the hub
+            print(f"publish failed: {e!r}", file=sys.stderr)
+            continue
         if tty:
             sys.stdout.write("\x1b[H\x1b[2J" + render(s) + "\n")
             sys.stdout.flush()
@@ -460,6 +470,70 @@ def cmd_hub(cfg, a):
 
 
 # ---------------------------------------------------------------- main
+
+
+def cmd_advice(cfg, a):
+    running = sum(1 for t in tasks.all_tasks(cfg) if t.get("state") == "running")
+    r = advice.compute(cfg, quota.all_quotas(cfg), running)
+    if not out(r, a.json):
+        ctx = r["context"]
+        print(f"owner {r['owner']}: quota {r['owner_quota'] if r['owner_quota'] is not None else '?'}%, "
+              f"context {str(ctx['tokens'] // 1000) + 'k' if ctx and ctx.get('tokens') else '?'} tokens")
+        for i in r["items"]:
+            print(f"[{i['level']}] {i['text']}" + (f"\n    {i['command']}" if i.get("command") else ""))
+        if not r["items"]:
+            print("nothing to do")
+    return 0
+
+
+def cmd_owner(cfg, a):
+    """Hand the owner role over at a durable boundary. GSD's /gsd-pause-work
+    writes the handoff; the new owner resumes with /gsd-resume-work."""
+    if a.agent not in cfg["agents"]:
+        raise SystemExit(f"unknown agent {a.agent}")
+    if "owner" not in cfg["agents"][a.agent].get("capabilities", []):
+        raise SystemExit(f"{a.agent} lacks the owner capability")
+    old = cfg["routing"]["owner"]
+    h = advice.handoff(cfg["root"])
+    max_age = advice.settings(cfg)["handoff_max_age_minutes"] * 60
+    if not a.force and (not h or time.time() - h["mtime"] > max_age):
+        raise SystemExit("no fresh .planning/HANDOFF.json: the current owner runs /gsd-pause-work first "
+                         "(or pass --force when the owner is gone)")
+    path = cfg["root"] / ".orchestration" / "routing.toml"
+    text = path.read_text()
+    new, n = re.subn(r'(?m)^owner\s*=\s*"[^"]*"', f'owner = "{a.agent}"', text, count=1)
+    if n != 1:
+        raise SystemExit("routing.toml has no owner line")
+    path.write_text(new)
+    print(f"owner: {old} -> {a.agent} (routing.toml; commit it with the handoff)")
+    running = [t["id"] for t in tasks.all_tasks(cfg) if t.get("state") == "running"]
+    if running:
+        print("running tasks continue; the new owner collects them: " + ", ".join(running))
+    if a.launch:
+        ag = cfg["agents"][a.agent]
+        w = cfg["routing"].get("workers", {})
+        keep = w.get("pass_env", tasks.DEFAULT_PASS_ENV)
+        prompt = (f"You are now the orchestration owner of this project (routing.toml owner = {a.agent}). "
+                  "Follow the owner bootstrap in AGENTS.md, then resume with the GSD resume-work workflow "
+                  "(/gsd-resume-work) and `python3 scripts/orch.py status --no-planning`.")
+        argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ], *ag["command"]]
+        if ag.get("prompt", "arg") == "arg":
+            argv.append(prompt)
+        labels = {"orch.owner": a.agent}
+        parent = os.environ.get("HC_TERMINAL_ID")
+        if parent:
+            try:
+                space = (hc.get(parent).get("labels") or {}).get("herdr.space")
+            except hc.HCError:
+                space = None
+            if space:
+                labels["herdr.space"] = space
+        res = hc.run(argv, f"owner-{a.agent}"[:32], cfg["root"], labels, outlive_parent=True)
+        if ag.get("prompt") == "send":
+            hc.wait(f"owner-{a.agent}"[:32], timeout=120)
+            hc.send(f"owner-{a.agent}"[:32], prompt)
+        print(f"new owner started: {res.get('address') if isinstance(res, dict) else res}")
+    return 0
 
 
 def main(argv=None):
@@ -519,6 +593,13 @@ def main(argv=None):
     s.add_argument("request")
     s.add_argument("--write", action="store_true")
     s.add_argument("--timeout", type=int, default=300)
+
+    p("advice")
+    s = p("owner")
+    s.add_argument("op", choices=["set"])
+    s.add_argument("agent")
+    s.add_argument("--launch", action="store_true", help="start the new owner in a terminal")
+    s.add_argument("--force", action="store_true", help="skip the fresh-handoff check")
 
     a = ap.parse_args(argv)
     if a.cmd == "statusline-tap":
