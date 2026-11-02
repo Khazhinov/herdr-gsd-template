@@ -57,4 +57,13 @@ with tempfile.TemporaryDirectory() as td:
     assert q.returncode == 3
     assert "starter marker block is missing" in q.stderr
 
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td) / "repo"
+    shutil.copytree(source, root, ignore=IGNORE)
+    gsd = "# GSD Agent Configuration — managed by gsd-core installer\n[agents]\nmax_threads = 2\n"
+    (root / ".codex/config.toml").write_text(gsd)
+    q = subprocess.run([str(root / "scripts/reconcile-runtime-config.py")], cwd=root, capture_output=True, text=True)
+    assert q.returncode == 0 and "managed by the GSD installer" in q.stdout, q
+    assert (root / ".codex/config.toml").read_text() == gsd
+
 print("reconcile test: PASS")

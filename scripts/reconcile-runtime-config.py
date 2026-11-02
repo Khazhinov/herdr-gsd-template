@@ -53,12 +53,17 @@ if not codex.exists() or not codex.read_text().strip():
     codex.write_text(managed + "\n")
 else:
     text = codex.read_text()
-    if begin not in text or end not in text:
+    if (begin not in text or end not in text) and "managed by gsd-core installer" in text:
+        # GSD is installed for Codex too (an owner-capable Codex). The GSD
+        # installer owns [agents]; the worker contract forbids fan-out instead.
+        print("note: .codex/config.toml is managed by the GSD installer; worker fan-out block skipped")
+    elif begin not in text or end not in text:
         print("Codex config exists but the starter marker block is missing.\n"
               "Merge the block from scripts/reconcile-runtime-config.py into .codex/config.toml "
               "(without duplicating [agents] tables), then rerun.", file=sys.stderr)
         raise SystemExit(3)
-    text = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: managed, text, flags=re.S)
-    codex.write_text(text.rstrip() + "\n")
+    else:
+        text = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: managed, text, flags=re.S)
+        codex.write_text(text.rstrip() + "\n")
 
 print("runtime config reconciled")
