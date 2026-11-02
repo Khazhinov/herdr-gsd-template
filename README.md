@@ -177,8 +177,13 @@ python3 scripts/orch.py hub start        # публикатор состояни
 
 Агент добавляется записью в `.orchestration/agents.toml` и именем в цепочках ролей `routing.toml`.
 Код планировщика не содержит идентификаторов агентов (это проверяет тест).
-Kimi Code и ZCode описаны как `candidate` / `experimental` и не выбираются автоматически,
-пока не пройдут smoke-тест (`auto_stability` в `routing.toml`).
+Kimi Code, OpenCode и ZCode описаны как `candidate` / `experimental` и не выбираются автоматически,
+пока не пройдут smoke-тест (`auto_stability` в `routing.toml`). Без API квоты вендора им задаётся
+`static` бюджет в `agents.local.toml`, иначе тяжёлая работа к ним не попадает.
+
+Владелец сменяем: `orch.py owner set <agent> --launch` после `/gsd-pause-work` (OPERATIONS, раздел 5).
+`orch.py advice` и Mission Control подсказывают, когда сжать или очистить контекст владельца,
+когда передать роль и когда вышла новая версия шаблона.
 
 ## Безопасность
 

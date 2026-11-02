@@ -9,7 +9,8 @@
 | Codex CLI | 0.165.0 | `>= 0.165.0` | `--no-daemon`, `app-server` RPC квот, `-c projects.<path>.trust_level` |
 | Node.js | 22.22.0 (среда проверки) | `>= 24` (требование GSD) | GSD 1.19 работает на 22 без проверки движка в рантайме; требование upstream сохранено |
 | Python | 3.12.3 | `>= 3.11` | `tomllib`, `datetime.UTC` |
-| Kimi Code | не установлен | `candidate` | адаптер описан, smoke-тест не выполнен |
+| Kimi Code | установлен в `~/.kimi-code/bin`, подписка не оплачена | `candidate` | TUI без начального промпта (`prompt = "send"`); smoke-тест не выполнен |
+| OpenCode | 1.19.5 | `candidate` | `--prompt` для начального промпта; smoke-тест воркера пройден на `opencode/deepseek-v4.1-flash-free`; статус herdr-core требует плагина `.orchestration/adapters/opencode/herdr-core-status.js` (OSC 7501), штатный плагин herdr говорит с сокетом прежнего Herdr TUI |
 | ZCode | не установлен | `experimental` | адаптер описан, smoke-тест не выполнен |
 
 ## Пути

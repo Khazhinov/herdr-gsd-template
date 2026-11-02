@@ -2,6 +2,11 @@
 
 ## 0.2.0 - 2026-11-02
 
+- Owner advice (`orch.py advice`, Mission Control): context size with compact/clear hints, owner switch
+  suggestion when the owner vendor runs low, template update check (`.orchestration/template.toml`).
+- `orch.py owner set <agent> [--launch]`: owner handoff on top of GSD pause-work/resume-work.
+- OpenCode adapter (candidate): worker smoke test passed; herdr-core status plugin in `.orchestration/adapters/opencode`.
+
 - Account-wide admission ledger with locked dispatch, per-window quota projections and cost samples,
   owner reserve, vendor denial handling, and unknown post-reset windows.
 - Collect stops workers before committing; merge preflights conflicts and protects `.planning/`.

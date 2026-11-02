@@ -14,12 +14,12 @@ owner_reserve_percent = 10
 # use-or-lose: among eligible agents, the one whose quota would expire unused
 #   soonest (highest remaining percent per hour until its tightest window resets).
 strategy = "ordered"
-chain = ["codex", "claude", "kimi", "zcode"]
+chain = ["codex", "claude", "kimi", "opencode", "zcode"]
 heavy = true
 
 [roles.review]
 strategy = "ordered"
-chain = ["codex", "kimi", "zcode", "claude"]
+chain = ["codex", "kimi", "opencode", "zcode", "claude"]
 heavy = false
 # Prefer an agent other than the owner; falling back to the owner is allowed
 # but the decision is marked independent = false.
@@ -32,7 +32,7 @@ heavy = true
 
 [roles.research]
 strategy = "cheapest"
-chain = ["kimi", "zcode", "codex", "claude"]
+chain = ["kimi", "opencode", "zcode", "codex", "claude"]
 heavy = false
 
 [roles.debug]
