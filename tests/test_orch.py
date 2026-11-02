@@ -618,6 +618,22 @@ class Planning(unittest.TestCase):
         self.assertEqual(len(phases[0]["plans"]), 1)
 
 
+class Hub(unittest.TestCase):
+    def test_project_busy_ignores_hub_dead_and_foreign_terminals(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("orch_cli", SRC / "scripts/orch.py")
+        orch = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(orch)
+        root = "/p/app"
+        idle = [{"address": "t1", "state": "live", "cwd": root},          # the hub itself
+                {"address": "t2", "state": "finished", "cwd": root},
+                {"address": "t3", "state": "live", "cwd": "/p/app-other"},
+                {"address": "t4", "state": "live", "cwd": "/home"}]
+        self.assertFalse(orch.project_busy(idle, root, "t1"))
+        worker = {"address": "t5", "state": "live", "cwd": root + "/.orchestration/worktrees/x"}
+        self.assertTrue(orch.project_busy(idle + [worker], root, "t1"))
+
+
 class ShellChecks(unittest.TestCase):
     def test_hub_restart_replaces_publisher(self):
         import orch

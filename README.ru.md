@@ -167,6 +167,16 @@ python3 scripts/orch.py hub start        # публикатор состояни
 | Routing | агент следующей задачи каждой роли, причина во всплывающей подсказке |
 | Recent | последние завершённые задачи и tool-агенты |
 
+![Mission Control в Herdr App](docs/images/mission-control-app.png)
+
+| Подсказки и воркеры | План, квоты, маршрутизация |
+|---|---|
+| ![Подсказки и работающие воркеры](docs/images/mission-control-top.png) | ![План, квоты и маршрутизация](docs/images/mission-control-plan.png) |
+
+На снимках вымышленный демопроект; квоты реальные.
+
+Hub завершается сам, если в проекте час нет живого терминала (OPERATIONS, раздел 4).
+
 Без Herdr App тот же снимок: `python3 scripts/orch.py watch` в любом терминале.
 
 ## Политика GSD

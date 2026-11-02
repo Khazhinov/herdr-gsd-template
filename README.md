@@ -167,6 +167,16 @@ change, the App redraws the mod, and worker statuses come straight from OSC 7501
 | Routing | next agent for each role, reason in the tooltip |
 | Recent | latest finished tasks and tool agents |
 
+![Mission Control in Herdr App](docs/images/mission-control-app.png)
+
+| Advice and workers | Plan, limits, routing |
+|---|---|
+| ![Advice and active workers](docs/images/mission-control-top.png) | ![Plan, limits and routing](docs/images/mission-control-plan.png) |
+
+Screenshots show a fictional demo project; quotas are real.
+
+The hub exits on its own when no live terminal works inside the project for an hour (OPERATIONS, section 4).
+
 Without Herdr App the same snapshot is available as `python3 scripts/orch.py watch` in any terminal.
 
 ## GSD policy

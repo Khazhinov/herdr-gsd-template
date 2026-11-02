@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 - 2026-11-02
+
+- The hub exits on its own when the project folder is gone or no live terminal works inside the project
+  for `watch.idle_exit_minutes` (60 by default).
 
 - Mission Control offers a hub restart button.
 - Advice commands copy to the clipboard on click.

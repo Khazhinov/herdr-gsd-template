@@ -351,11 +351,26 @@ def render(s, color=True):
     return "\n".join(L)
 
 
+def project_busy(terms, root, hub):
+    """A live terminal other than the hub works inside the project: an App pane,
+    the owner, a worker (worktrees live under the root)."""
+    root = str(root)
+    return any(
+        t.get("state") == "live"
+        and t.get("address") != hub
+        and (t.get("cwd") == root or str(t.get("cwd") or "").startswith(root + "/"))
+        for t in terms
+    )
+
+
 def cmd_watch(cfg, a):
     """Publisher + optional TUI. Refreshes quotas on a timer and recomposes on
     every herdr-core event that touches an orch-labeled terminal."""
     hub = os.environ.get("HC_TERMINAL_ID")
     interval = a.interval or cfg["routing"].get("watch", {}).get("quota_interval", 60)
+    # Only the hub exits on its own; `watch` in a person's terminal runs until stopped.
+    idle_exit = 60 * cfg["routing"].get("watch", {}).get("idle_exit_minutes", 60) if a.hub else 0
+    busy_at = time.time()
     dirty = threading.Event()
     dirty.set()
 
@@ -401,6 +416,19 @@ def cmd_watch(cfg, a):
         # Without the event stream every wake may hide a change.
         changed = changed or rpc is None
         now = time.time()
+        if a.hub and not (cfg["root"] / ".orchestration").is_dir():
+            print("project folder is gone; hub exits", file=sys.stderr)
+            return 0
+        if idle_exit and now - busy_at >= 60:
+            try:
+                if project_busy(hc.ls(), cfg["root"], hub):
+                    busy_at = now
+                elif now - busy_at >= idle_exit:
+                    print(f"no terminal in the project for {idle_exit // 60} min; hub exits",
+                          file=sys.stderr)
+                    return 0
+            except (OSError, hc.HCError):
+                busy_at = now  # core unreachable: do not judge idleness
         if now - last_q >= interval or quotas is None:
             try:
                 quotas = quota.all_quotas(cfg, max_age=interval - 1)
@@ -473,6 +501,7 @@ def cmd_hub(cfg, a):
         "--root",
         str(cfg["root"]),
         "watch",
+        "--hub",
     ]
     r = hc.run(argv, name, cfg["root"], labels, no_parent=True)
     print(f"{name} started as {r.get('address') if isinstance(r, dict) else r}")
@@ -603,6 +632,7 @@ def main(argv=None):
     s.add_argument("--interval", type=int)
     s.add_argument("--once", action="store_true")
     s.add_argument("--quiet", action="store_true")
+    s.add_argument("--hub", action="store_true", help=argparse.SUPPRESS)
     s = p("hub")
     s.add_argument("op", choices=["start", "stop", "restart"])
     s = p("worktree")

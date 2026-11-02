@@ -85,3 +85,6 @@ pass_env = ["PATH", "LANG", "LC_ALL", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "h
 [watch]
 # Seconds between quota refreshes in `orch.py watch`.
 quota_interval = 60
+# The hub exits when no live terminal works inside the project for this long
+# (0: never). The owner's session start runs `orch.py hub start` again.
+idle_exit_minutes = 60

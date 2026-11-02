@@ -56,7 +56,7 @@ A `blocked` status during work means a permission request. It is visible in the 
 - Owner session: `orch.py status` shows unfinished tasks; run `collect` for each.
 - Machine or core reboot: herdr-core does not resume agents. A task with no live terminal and no
   report gets `incomplete` in `collect`; the worktree and branch stay for manual review.
-- The hub restarts with `orch.py hub start`.
+- The hub restarts with `orch.py hub start` (the owner's session start does it). The hub exits on its own when the project folder is gone or no live terminal (App pane, owner, worker) works inside the project for `[watch] idle_exit_minutes` (60 by default, 0 disables).
 
 ## 5. Owner handoff
 
