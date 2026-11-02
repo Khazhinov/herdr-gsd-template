@@ -263,7 +263,7 @@ def all_quotas(cfg, max_age=60.0, refresh=False):
         changed = True
     if changed:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = QUOTA_CACHE.with_suffix(".tmp")
+        tmp = QUOTA_CACHE.with_suffix(f".{os.getpid()}.tmp")  # shared by every project: unique per writer
         tmp.write_text(json.dumps(cache, indent=1))
         tmp.replace(QUOTA_CACHE)
     return out

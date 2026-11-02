@@ -36,7 +36,7 @@ def git(cfg, *args, cwd=None, check=True):
 
 
 def write_json(path, data):
-    tmp = Path(str(path) + ".tmp")
+    tmp = Path(f"{path}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data, indent=1, ensure_ascii=False))
     tmp.replace(path)
 

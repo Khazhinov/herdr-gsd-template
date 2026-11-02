@@ -147,7 +147,7 @@ def cmd_statusline_tap(a):
         snap = {"observed_at": time.time(), "rate_limits": data.get("rate_limits"),
                 "session_id": data.get("session_id")}
         quota.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = quota.CLAUDE_SNAPSHOT.with_suffix(".tmp")
+        tmp = quota.CLAUDE_SNAPSHOT.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(snap))
         tmp.replace(quota.CLAUDE_SNAPSHOT)
     except (json.JSONDecodeError, OSError):
@@ -328,7 +328,11 @@ def cmd_watch(cfg, a):
         changed = changed or rpc is None
         now = time.time()
         if now - last_q >= interval or quotas is None:
-            quotas = quota.all_quotas(cfg, max_age=interval - 1)
+            try:
+                quotas = quota.all_quotas(cfg, max_age=interval - 1)
+            except OSError as e:  # the hub must outlive a transient cache error
+                print(f"quota refresh failed: {e}", file=sys.stderr)
+                quotas = quotas or {}
             last_q, changed = now, True
         try:
             m = max((p.stat().st_mtime for p in planning_dir.rglob("*.md")), default=0)
