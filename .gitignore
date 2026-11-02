@@ -5,3 +5,4 @@ __pycache__/
 docs/peer/*.tmp
 .orchestration/worktrees/
 docs/orch/*.tmp
+.orchestration/*.local.toml

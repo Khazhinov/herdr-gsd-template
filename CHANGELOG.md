@@ -2,10 +2,14 @@
 
 ## 0.2.0 - 2026-11-02
 
+Known limitations: the hub, its herdr-core document and the `orch.project` label derive from the
+project folder name, so two checkouts with the same folder name on one machine share them (review C17).
+Kimi Code and ZCode are not smoke-tested; OpenCode is verified for `research` only.
+
 - Owner advice (`orch.py advice`, Mission Control): context size with compact/clear hints, owner switch
   suggestion when the owner vendor runs low, template update check (`.orchestration/template.toml`).
 - `orch.py owner set <agent> [--launch]`: owner handoff on top of GSD pause-work/resume-work.
-- OpenCode adapter (candidate): worker smoke test passed; herdr-core status plugin in `.orchestration/adapters/opencode`.
+- OpenCode adapter (candidate): research smoke test passed; herdr-core status plugin in `.orchestration/adapters/opencode`.
 
 - Account-wide admission ledger with locked dispatch, per-window quota projections and cost samples,
   owner reserve, vendor denial handling, and unknown post-reset windows.

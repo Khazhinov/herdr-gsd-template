@@ -238,7 +238,8 @@ export default class MissionControl extends View {
   workerCard(x, term, m, t) {
     const addr = term ? term.address : qualify(m, x.live && x.live.address);
     // Programs that report no OSC status have status null.
-    const status = (term ? term.status : x.live && x.live.status) || (term ? "running" : "gone");
+    const raw = term ? term.status : x.live && x.live.status;
+    const status = (raw && typeof raw === "object" ? raw.state : raw) || (term ? "running" : "gone");
     const msg = term && term.report && term.report.msg;
     const elapsed = x.started_at ? span(Date.now() / 1000 - x.started_at) : "";
     const icon = (id, label, fn, color) => div().id(id).px(6).rounded(5).text_size(11).text_color(color || t.muted)

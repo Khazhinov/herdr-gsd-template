@@ -80,3 +80,16 @@ quota_static = {remaining_percent = 100}
 
 Скопировать `.orchestration/hooks/worktree-env.example` в `.orchestration/hooks/worktree-env`, сделать исполняемым
 и настроить изоляцию БД, портов и кэшей. Хук вызывается после создания каждого worktree.
+
+## 7. Обновление зависимостей
+
+Версии не меняются только потому, что вышел новый выпуск.
+
+1. Изменить `.orchestration/versions.env`.
+2. Прочитать примечания к выпуску каждого обновляемого компонента.
+3. `./scripts/version-check.py --strict`.
+4. Переустановить GSD официальным установщиком.
+5. `./scripts/reconcile-runtime-config.py`.
+6. `./scripts/self-check.sh --offline`.
+7. Smoke-тест воркера через herdr-core: `orch.py dispatch` задачи `research`, затем `execute` в worktree, `collect`, `worktree merge`.
+8. Обновить `.orchestration/docs/COMPATIBILITY.md` и `REVIEW.md`.

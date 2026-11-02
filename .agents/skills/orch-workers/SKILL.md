@@ -34,6 +34,10 @@ It owns routing, quotas, worker lifecycle and evidence. Do not start agents with
    - `execute` gets its own worktree and branch `orch/<id>` automatically.
    - `--heavy/--light` overrides the role default weight; `--agent X` demands an agent
      (fails if it is not eligible: no silent fallback).
+   - Review of a worker's result: add `--of <task id>`. Routing then excludes the author's
+     quota account, so the reviewer is independent of the author, not only of the owner.
+   - A task id is used once. Rerun with `--replace` (archives the old record and report)
+     or pick a new id.
    - The output shows the agent, terminal, report path and the routing reason.
    - `startup.ok: false` means the worker waits for a person (trust/login). Tell the user;
      do not press keys for them.
@@ -47,8 +51,9 @@ It owns routing, quotas, worker lifecycle and evidence. Do not start agents with
      (`hc read w-<id> --lines 60`).
    - `state: incomplete` -> read why; fix the contract or route again. Never resend blindly.
 5. Execute tasks: review the branch diff (`git diff <base>..orch/<id>`), usually by a
-   review task, then `orch worktree merge <id>` (refuses while any terminal is inside the
-   worktree or the owner tree is dirty). Abandon with `orch worktree remove <id>` (branch kept).
+   review task with `--of <id>`, then `orch worktree merge <id>` (requires a collected
+   `complete` task; refuses while any terminal is inside the worktree, when the owner tree is
+   dirty, when the merge would conflict, or when the branch changes `.planning/`). Abandon with `orch worktree remove <id>` (branch kept).
 
 ## 3. GSD gates (default lean profile)
 

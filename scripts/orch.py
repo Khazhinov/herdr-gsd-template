@@ -481,10 +481,9 @@ def cmd_advice(cfg, a):
     r = advice.compute(cfg, quota.all_quotas(cfg), running)
     if not out(r, a.json):
         ctx = r["context"]
-        print(
-            f"owner {r['owner']}: quota {'?' if r['owner_quota'] is None else r['owner_quota']}%, "
-            f"context {f'{ctx["tokens"] // 1000}k' if ctx and ctx.get('tokens') else '?'} tokens"
-        )
+        size = f"{ctx['tokens'] // 1000}k" if ctx and ctx.get("tokens") else "?"
+        q = "?" if r["owner_quota"] is None else r["owner_quota"]
+        print(f"owner {r['owner']}: quota {q}%, context {size} tokens")
         for i in r["items"]:
             print(
                 f"[{i['level']}] {i['text']}"

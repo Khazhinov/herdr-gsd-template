@@ -97,6 +97,15 @@ class Advice(unittest.TestCase):
         five = next(w for w in q["windows"] if w["name"] == "5h")
         self.assertEqual(five["used_percent"], 27)
 
+    def test_tap_keeps_snapshot_without_rate_limits(self):
+        env = {**os.environ, "ORCH_CACHE_DIR": str(quota.CACHE_DIR)}
+        cmd = [sys.executable, str(SRC / "scripts/orch.py"), "statusline-tap", "--", "true"]
+        rl = {"five_hour": {"used_percentage": 30, "resets_at": NOW + 3600}}
+        subprocess.run(cmd, input=json.dumps({"session_id": "a", "rate_limits": rl}), text=True, env=env, check=True)
+        subprocess.run(cmd, input=json.dumps({"session_id": "b"}), text=True, env=env, check=True)
+        snap = json.loads((quota.CACHE_DIR / "claude-statusline.json").read_text())
+        self.assertEqual(snap["rate_limits"], rl)
+
     def test_owner_set_requires_handoff(self):
         env = {**os.environ, "ORCH_CACHE_DIR": str(quota.CACHE_DIR), "ORCH_HC": "false"}
         cmd = [sys.executable, str(SRC / "scripts/orch.py"), "--root", str(self.root), "owner", "set", "codex"]

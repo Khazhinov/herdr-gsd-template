@@ -177,13 +177,29 @@ python3 scripts/orch.py hub start        # публикатор состояни
 
 Агент добавляется записью в `.orchestration/agents.toml` и именем в цепочках ролей `routing.toml`.
 Код планировщика не содержит идентификаторов агентов (это проверяет тест).
-Kimi Code, OpenCode и ZCode описаны как `candidate` / `experimental` и не выбираются автоматически,
-пока не пройдут smoke-тест (`auto_stability` в `routing.toml`). Без API квоты вендора им задаётся
+Kimi Code, OpenCode и ZCode описаны как `candidate` / `experimental` и не выбираются автоматически
+(`auto_stability` в `routing.toml`); вызов `--agent <id>` допустим. OpenCode прошёл smoke-тест
+роли `research` (COMPATIBILITY), Kimi Code и ZCode его ещё не проходили. Без API квоты вендора им задаётся
 `static` бюджет в `agents.local.toml`, иначе тяжёлая работа к ним не попадает.
 
 Владелец сменяем: `orch.py owner set <agent> --launch` после `/gsd-pause-work` (OPERATIONS, раздел 5).
 `orch.py advice` и Mission Control подсказывают, когда сжать или очистить контекст владельца,
 когда передать роль и когда вышла новая версия шаблона.
+
+## Стек оптимизации
+
+Правила экономии контекста одинаковы для владельца и воркеров и описаны в
+`.agents/skills/gsd-context-discipline/SKILL.md`: поиск по графу кода или `rg` до широкого чтения,
+чтение диапазонов, без повторного чтения неизменённых файлов, повторное ревью только по разнице,
+детерминированные проверки пакетом с выводом только итога, крупные журналы в файлах, а не в чате.
+Контракт задачи (`.orchestration/templates/task.md`) добавляет правила расхода квоты: длинная команда -
+один вызов с максимальным ожиданием, без опроса `ps`/`tail`. Гигиена контекста самого владельца -
+`orch.py advice` (OPERATIONS, раздел 5.1).
+
+`.mcp.example.json` - заготовка подключения MCP графа кода или поиска по репозиторию на уровне проекта.
+`.orchestration/versions.env` фиксирует проверенные версии GSD, herdr-core, CLI агентов, Node.js и
+Python; `scripts/version-check.py` сверяет с ними установленные версии, порядок обновления -
+OPERATIONS, раздел 7.
 
 ## Безопасность
 
