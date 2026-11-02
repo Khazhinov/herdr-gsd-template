@@ -47,14 +47,15 @@ def fmt_reset(ts):
 
 def quota_line(aid, q):
     if not q.get("available"):
-        return f"{aid:<8} unknown  ({(q.get('extra') or {}).get('reason', '')})"
+        return f"{aid:<13} unknown  ({(q.get('extra') or {}).get('reason', '')})"
     ws = "  ".join(f"{w['name']} {w['remaining_percent']:.0f}% (reset {fmt_reset(w.get('resets_at'))})"
                    for w in q["windows"])
     flag = " STALE" if q.get("stale") else ""
     extra = q.get("extra") or {}
     if extra.get("reset_credits_available"):
         ws += f"  +{extra['reset_credits_available']} reset credits"
-    return f"{aid:<8} {q['effective_remaining_percent']:>3.0f}%  {ws}  [{q['confidence']}]{flag}"
+    eff = q["effective_remaining_percent"]
+    return f"{aid:<13} {'?' if eff is None else f'{eff:.0f}':>3}%  {ws}  [{q['confidence']}]{flag}"
 
 
 # ---------------------------------------------------------------- commands
@@ -234,31 +235,31 @@ def render(s, color=True):
     L.append(c("1", "ROUTING"))
     for role, d in s["routing"].items():
         ind = "" if d["independent"] is None else ("  independent" if d["independent"] else "  NOT independent")
-        L.append(f"  {role:<9} {(d['selected'] or 'NONE'):<8} {d['weight']:<6}{ind}")
+        L.append(f"  {role:<9} {(d['selected'] or 'NONE'):<13} {d['weight']:<6}{ind}")
     for role, ag in (s.get("override") or {}).items():
         L.append(c("33", f"  override: {role} -> {ag}"))
     L.append("")
     L.append(c("1", "QUOTAS"))
     for aid, q in s["quotas"].items():
         if not q.get("available"):
-            L.append(f"  {aid:<8} {bar(None)} unknown")
+            L.append(f"  {aid:<13} {bar(None)} unknown")
             continue
-        eff = q["effective_remaining_percent"]
+        eff = q["effective_remaining_percent"] or 0
         col = "31" if eff <= 15 else ("33" if eff <= 35 else "32")
         ws = " ".join(f"{w['name']}:{w['remaining_percent']:.0f}%/{fmt_reset(w.get('resets_at'))}"
                       for w in q["windows"])
         st = c("31", " STALE") if q.get("stale") else ""
-        L.append(f"  {aid:<8} {c(col, bar(eff))} {eff:>3.0f}%  {ws}  hr={q.get('headroom')}{st}")
+        L.append(f"  {aid:<13} {c(col, bar(eff))} {eff:>3.0f}%  {ws}  hr={q.get('headroom')}{st}")
     L.append("")
     L.append(c("1", "TASKS"))
     running = [t for t in s["tasks"] if t.get("state") == "running"]
     done = [t for t in s["tasks"] if t.get("state") != "running"][-6:]
     for t in running:
         lv = t.get("live") or {}
-        L.append(f"  > {t['id']:<22} {t['role']:<8} {t['agent']:<7} {lv.get('status') or lv.get('state'):<8} "
+        L.append(f"  > {t['id']:<22} {t['role']:<8} {t['agent']:<13} {lv.get('status') or lv.get('state'):<8} "
                  f"{lv.get('address') or ''} {(lv.get('msg') or '')[:50]}")
     for t in done:
-        L.append(c("2", f"    {t['id']:<22} {t['role']:<8} {t['agent']:<7} {t.get('state'):<10} {t.get('verdict') or ''}"))
+        L.append(c("2", f"    {t['id']:<22} {t['role']:<8} {t['agent']:<13} {t.get('state'):<10} {t.get('verdict') or ''}"))
     if not s["tasks"]:
         L.append("  none")
     if s.get("tools"):

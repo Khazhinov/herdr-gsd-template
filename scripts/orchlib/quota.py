@@ -273,6 +273,8 @@ def headroom(q, now=None):
     if not known(q):
         return None
     now = now or time.time()
-    w = min(q["windows"], key=lambda w: w["remaining_percent"])
+    names = (q.get("extra") or {}).get("gating_windows")
+    ws = [w for w in q["windows"] if not names or w["name"] in names] or q["windows"]
+    w = min(ws, key=lambda w: w["remaining_percent"])
     hours = max(1.0, ((w.get("resets_at") or now + 3600 * 24 * 7) - now) / 3600)
     return round(w["remaining_percent"] / hours, 2)
