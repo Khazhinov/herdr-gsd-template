@@ -251,7 +251,9 @@ def compose(cfg, quotas=None, with_planning=True, terminals=None):
             for t in tasks.refresh(cfg, terms)
         ],
         "tools": tools,
-        "advice": advice.compute(cfg, quotas, sum(1 for t in tasks.all_tasks(cfg) if t.get("state") == "running")),
+        "advice": advice.compute(
+            cfg, quotas, sum(1 for t in tasks.all_tasks(cfg) if t.get("state") == "running")
+        ),
         "planning": planning(cfg["root"]) if with_planning else None,
     }
 

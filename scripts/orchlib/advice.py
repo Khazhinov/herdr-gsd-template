@@ -5,6 +5,7 @@ new release. Read-only: it suggests, the person decides.
 Context size drives cost: every owner request resends the whole context, so a
 200k-token context costs about five times a 40k one per request.
 """
+
 import json
 import os
 import re
@@ -20,13 +21,17 @@ SESSIONS = "owner-sessions"  # per-session context snapshots, one file per sessi
 
 def settings(cfg):
     a = cfg["routing"].get("advice", {})
-    return {"compact_tokens": a.get("compact_tokens", 100_000), "clear_tokens": a.get("clear_tokens", 160_000),
-            "owner_switch_percent": a.get("owner_switch_percent", 10),
-            "handoff_max_age_minutes": a.get("handoff_max_age_minutes", 120),
-            "update_check_hours": a.get("update_check_hours", 24)}
+    return {
+        "compact_tokens": a.get("compact_tokens", 100_000),
+        "clear_tokens": a.get("clear_tokens", 160_000),
+        "owner_switch_percent": a.get("owner_switch_percent", 10),
+        "handoff_max_age_minutes": a.get("handoff_max_age_minutes", 120),
+        "update_check_hours": a.get("update_check_hours", 24),
+    }
 
 
 # ---------------------------------------------------------------- owner context
+
 
 def record_session(data, now=None):
     """Called by the Claude statusline tap: keep the context size per session."""
@@ -34,16 +39,24 @@ def record_session(data, now=None):
     tokens = None
     cur = cw.get("current_usage") or {}
     if cur:
-        tokens = sum(int(cur.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens",
-                                                    "cache_read_input_tokens"))
+        tokens = sum(
+            int(cur.get(k) or 0)
+            for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+        )
     elif cw.get("used_percentage") is not None and cw.get("context_window_size"):
         tokens = int(cw["used_percentage"] * cw["context_window_size"] / 100)
     if tokens is None and data.get("transcript_path"):
         tokens = transcript_tokens(data["transcript_path"])
     sid = str(data.get("session_id") or "unknown")
     root = (data.get("workspace") or {}).get("project_dir") or data.get("cwd")
-    snap = {"observed_at": now or time.time(), "session_id": sid, "root": root, "tokens": tokens,
-            "window": cw.get("context_window_size"), "model": (data.get("model") or {}).get("id")}
+    snap = {
+        "observed_at": now or time.time(),
+        "session_id": sid,
+        "root": root,
+        "tokens": tokens,
+        "window": cw.get("context_window_size"),
+        "model": (data.get("model") or {}).get("id"),
+    }
     d = quota.CACHE_DIR / SESSIONS
     d.mkdir(parents=True, exist_ok=True)
     tmp = d / f".{sid}.{os.getpid()}.tmp"
@@ -66,8 +79,10 @@ def transcript_tokens(path, tail=400_000):
         except (json.JSONDecodeError, AttributeError):
             continue
         if u:
-            return sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens",
-                                                    "cache_read_input_tokens"))
+            return sum(
+                int(u.get(k) or 0)
+                for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+            )
     return None
 
 
@@ -79,7 +94,11 @@ def claude_context(root, max_age=900, now=None):
             s = json.loads(p.read_text())
         except (OSError, json.JSONDecodeError):
             continue
-        if s.get("root") and Path(s["root"]).resolve() == Path(root).resolve() and now - s["observed_at"] < max_age:
+        if (
+            s.get("root")
+            and Path(s["root"]).resolve() == Path(root).resolve()
+            and now - s["observed_at"] < max_age
+        ):
             if best is None or s["observed_at"] > best["observed_at"]:
                 best = s
     return best
@@ -89,7 +108,9 @@ def codex_context(root, now=None, max_age=900):
     """Codex owner: the newest rollout whose cwd is the project root."""
     now = now or time.time()
     base = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "sessions"
-    files = sorted(base.glob("*/*/*/rollout-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)[:20]
+    files = sorted(
+        base.glob("*/*/*/rollout-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True
+    )[:20]
     for p in files:
         if now - p.stat().st_mtime > max_age:
             break
@@ -111,8 +132,14 @@ def codex_context(root, now=None, max_age=900):
             info = pl.get("info") if pl.get("type") == "token_count" else None
             if info:
                 u = info.get("last_token_usage") or {}
-                return {"observed_at": p.stat().st_mtime, "session_id": p.stem, "root": str(root),
-                        "tokens": u.get("input_tokens"), "window": info.get("model_context_window"), "model": None}
+                return {
+                    "observed_at": p.stat().st_mtime,
+                    "session_id": p.stem,
+                    "root": str(root),
+                    "tokens": u.get("input_tokens"),
+                    "window": info.get("model_context_window"),
+                    "model": None,
+                }
     return None
 
 
@@ -127,6 +154,7 @@ def owner_context(cfg, now=None):
 
 # ---------------------------------------------------------------- handoff (GSD pause-work)
 
+
 def handoff(root):
     """GSD's own handoff: /gsd-pause-work writes .planning/HANDOFF.json."""
     p = Path(root) / ".planning" / "HANDOFF.json"
@@ -137,6 +165,7 @@ def handoff(root):
 
 
 # ---------------------------------------------------------------- template updates
+
 
 def template_info(root):
     try:
@@ -161,8 +190,13 @@ def latest_release(upstream, max_age_h=24, now=None):
     except (OSError, json.JSONDecodeError, KeyError):
         pass
     try:
-        out = subprocess.run(["git", "ls-remote", "--tags", "--refs", upstream], capture_output=True, text=True,
-                             timeout=20, env={**os.environ, "GIT_TERMINAL_PROMPT": "0"}).stdout
+        out = subprocess.run(
+            ["git", "ls-remote", "--tags", "--refs", upstream],
+            capture_output=True,
+            text=True,
+            timeout=20,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        ).stdout
     except (OSError, subprocess.TimeoutExpired):
         return None
     vers = [v for v in (_ver(line.rsplit("/", 1)[-1]) for line in out.splitlines()) if v]
@@ -184,6 +218,7 @@ def update(cfg, now=None, check=True):
 
 # ---------------------------------------------------------------- advice
 
+
 def compute(cfg, quotas, running, now=None, check_update=True):
     """running: number of this project's running tasks. Returns the facts and
     a list of advice items {level: info|warn|act, kind, text, command}."""
@@ -198,13 +233,26 @@ def compute(cfg, quotas, running, now=None, check_update=True):
         k = ctx["tokens"] // 1000
         point = "now: no worker is running" if safe else "after the running tasks are collected"
         if ctx["tokens"] >= st["clear_tokens"]:
-            items.append({"level": "act", "kind": "context",
-                          "text": f"owner context {k}k tokens: run /gsd-pause-work, then {a.get('clear_command', '/clear')} "
-                                  f"and resume ({point})", "command": a.get("clear_command", "/clear")})
+            items.append(
+                {
+                    "level": "act",
+                    "kind": "context",
+                    "text": f"owner context {k}k tokens: run /gsd-pause-work, "
+                    f"then {a.get('clear_command', '/clear')} "
+                    f"and resume ({point})",
+                    "command": a.get("clear_command", "/clear"),
+                }
+            )
         elif ctx["tokens"] >= st["compact_tokens"]:
-            items.append({"level": "warn", "kind": "context",
-                          "text": f"owner context {k}k tokens: {a.get('compact_command', '/compact')} ({point})",
-                          "command": a.get("compact_command", "/compact")})
+            items.append(
+                {
+                    "level": "warn",
+                    "kind": "context",
+                    "text": f"owner context {k}k tokens: "
+                    f"{a.get('compact_command', '/compact')} ({point})",
+                    "command": a.get("compact_command", "/compact"),
+                }
+            )
     q = quotas.get(owner)
     rem = q.get("effective_remaining_percent") if quota.known(q) else None
     switch_to = None
@@ -213,31 +261,68 @@ def compute(cfg, quotas, running, now=None, check_update=True):
         best = None
         for aid, b in cfg["agents"].items():
             qb = quotas.get(aid)
-            if (aid == owner or quota.account(cfg, aid) == acct or "owner" not in b.get("capabilities", [])
-                    or not quota.known(qb)):
+            if (
+                aid == owner
+                or quota.account(cfg, aid) == acct
+                or "owner" not in b.get("capabilities", [])
+                or not quota.known(qb)
+            ):
                 continue
             if best is None or qb["effective_remaining_percent"] > best[1]:
                 best = (aid, qb["effective_remaining_percent"])
         if best and best[1] > st["owner_switch_percent"]:
             switch_to = best[0]
-            items.append({"level": "act", "kind": "owner",
-                          "text": f"owner {owner} has {rem:.0f}% quota left: stop new work, /gsd-pause-work, "
-                                  f"then hand over to {best[0]} ({best[1]:.0f}% left)",
-                          "command": f"python3 scripts/orch.py owner set {best[0]} --launch"})
+            items.append(
+                {
+                    "level": "act",
+                    "kind": "owner",
+                    "text": f"owner {owner} has {rem:.0f}% quota left: "
+                    "stop new work, /gsd-pause-work, "
+                    f"then hand over to {best[0]} ({best[1]:.0f}% left)",
+                    "command": f"python3 scripts/orch.py owner set {best[0]} --launch",
+                }
+            )
         else:
-            items.append({"level": "act", "kind": "owner",
-                          "text": f"owner {owner} has {rem:.0f}% quota left and no other owner-capable agent has more: "
-                                  "pause at the next safe point", "command": None})
+            items.append(
+                {
+                    "level": "act",
+                    "kind": "owner",
+                    "text": f"owner {owner} has {rem:.0f}% quota left and "
+                    "no other owner-capable agent has more: "
+                    "pause at the next safe point",
+                    "command": None,
+                }
+            )
     h = handoff(cfg["root"])
     if (switch_to or (ctx and (ctx.get("tokens") or 0) >= st["clear_tokens"])) and (
-            not h or now - h["mtime"] > st["handoff_max_age_minutes"] * 60):
-        items.append({"level": "warn", "kind": "handoff",
-                      "text": "no fresh .planning/HANDOFF.json: run /gsd-pause-work before clearing or switching",
-                      "command": "/gsd-pause-work"})
+        not h or now - h["mtime"] > st["handoff_max_age_minutes"] * 60
+    ):
+        items.append(
+            {
+                "level": "warn",
+                "kind": "handoff",
+                "text": "no fresh .planning/HANDOFF.json: "
+                "run /gsd-pause-work before clearing or switching",
+                "command": "/gsd-pause-work",
+            }
+        )
     up = update(cfg, now, check=check_update)
     if up and up["available"]:
-        items.append({"level": "info", "kind": "update",
-                      "text": f"template {up['latest']} available (installed {up['installed']})",
-                      "command": f"git clone {up['upstream']} && <clone>/scripts/install-into-repo.sh {cfg['root']}"})
-    return {"owner": owner, "owner_quota": rem, "context": ctx, "safe_point": safe, "handoff": h,
-            "update": up, "items": items}
+        items.append(
+            {
+                "level": "info",
+                "kind": "update",
+                "text": f"template {up['latest']} available (installed {up['installed']})",
+                "command": f"git clone {up['upstream']} && "
+                f"<clone>/scripts/install-into-repo.sh {cfg['root']}",
+            }
+        )
+    return {
+        "owner": owner,
+        "owner_quota": rem,
+        "context": ctx,
+        "safe_point": safe,
+        "handoff": h,
+        "update": up,
+        "items": items,
+    }

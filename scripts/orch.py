@@ -54,7 +54,8 @@ def quota_line(aid, q):
         return f"{aid:<13} unknown  ({(q.get('extra') or {}).get('reason', '')})"
     ws = "  ".join(
         f"{w['name']} {w['remaining_percent']:.0f}% (reset {fmt_reset(w.get('resets_at'))})"
-        if w['remaining_percent'] is not None else f"{w['name']} ?% (reset {fmt_reset(w.get('resets_at'))})"
+        if w["remaining_percent"] is not None
+        else f"{w['name']} ?% (reset {fmt_reset(w.get('resets_at'))})"
         for w in q["windows"]
     )
     flag = " STALE" if q.get("stale") else ""
@@ -480,10 +481,15 @@ def cmd_advice(cfg, a):
     r = advice.compute(cfg, quota.all_quotas(cfg), running)
     if not out(r, a.json):
         ctx = r["context"]
-        print(f"owner {r['owner']}: quota {r['owner_quota'] if r['owner_quota'] is not None else '?'}%, "
-              f"context {str(ctx['tokens'] // 1000) + 'k' if ctx and ctx.get('tokens') else '?'} tokens")
+        print(
+            f"owner {r['owner']}: quota {'?' if r['owner_quota'] is None else r['owner_quota']}%, "
+            f"context {f'{ctx["tokens"] // 1000}k' if ctx and ctx.get('tokens') else '?'} tokens"
+        )
         for i in r["items"]:
-            print(f"[{i['level']}] {i['text']}" + (f"\n    {i['command']}" if i.get("command") else ""))
+            print(
+                f"[{i['level']}] {i['text']}"
+                + (f"\n    {i['command']}" if i.get("command") else "")
+            )
         if not r["items"]:
             print("nothing to do")
     return 0
@@ -500,8 +506,10 @@ def cmd_owner(cfg, a):
     h = advice.handoff(cfg["root"])
     max_age = advice.settings(cfg)["handoff_max_age_minutes"] * 60
     if not a.force and (not h or time.time() - h["mtime"] > max_age):
-        raise SystemExit("no fresh .planning/HANDOFF.json: the current owner runs /gsd-pause-work first "
-                         "(or pass --force when the owner is gone)")
+        raise SystemExit(
+            "no fresh .planning/HANDOFF.json: the current owner runs /gsd-pause-work first "
+            "(or pass --force when the owner is gone)"
+        )
     path = cfg["root"] / ".orchestration" / "routing.toml"
     text = path.read_text()
     new, n = re.subn(r'(?m)^owner\s*=\s*"[^"]*"', f'owner = "{a.agent}"', text, count=1)
@@ -516,9 +524,12 @@ def cmd_owner(cfg, a):
         ag = cfg["agents"][a.agent]
         w = cfg["routing"].get("workers", {})
         keep = w.get("pass_env", tasks.DEFAULT_PASS_ENV)
-        prompt = (f"You are now the orchestration owner of this project (routing.toml owner = {a.agent}). "
-                  "Follow the owner bootstrap in AGENTS.md, then resume with the GSD resume-work workflow "
-                  "(/gsd-resume-work) and `python3 scripts/orch.py status --no-planning`.")
+        prompt = (
+            "You are now the orchestration owner of this project "
+            f"(routing.toml owner = {a.agent}). Follow the owner bootstrap in AGENTS.md, "
+            "then resume with the GSD resume-work workflow "
+            "(/gsd-resume-work) and `python3 scripts/orch.py status --no-planning`."
+        )
         argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ], *ag["command"]]
         if ag.get("prompt", "arg") == "arg":
             argv.append(prompt)

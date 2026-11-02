@@ -50,8 +50,7 @@ def decide(
     owner = r["owner"]
     owner_account = account(cfg, owner)
     owner_quota = {
-        w["name"]: w["remaining_percent"]
-        for w in (quotas.get(owner) or {}).get("windows", [])
+        w["name"]: w["remaining_percent"] for w in (quotas.get(owner) or {}).get("windows", [])
     }
     auto = set(r.get("auto_stability", ["supported"]))
     unknown_policy = r.get("unknown_quota", {}).get(weight, "deny")
@@ -95,22 +94,32 @@ def decide(
             windows = [w for w in q["windows"] if not names or w["name"] in names]
             for w in windows:
                 name, rem = w["name"], w["remaining_percent"]
-                ahead = (pending or {}).get(acct, {}).get(name, 0) if isinstance((pending or {}).get(acct), dict) else (pending or {}).get(acct, 0)
+                ahead = (
+                    (pending or {}).get(acct, {}).get(name, 0)
+                    if isinstance((pending or {}).get(acct), dict)
+                    else (pending or {}).get(acct, 0)
+                )
                 mine = cost(cfg, costs, aid, weight, name)
                 left = rem - ahead - mine
-                calc = (f"quota {rem:.0f}% ({name})"
-                        + (f" - {ahead:.0f}% running" if ahead else "")
-                        + (f" - {mine:.0f}% this task = {left:.0f}%" if mine or ahead else ""))
+                calc = (
+                    f"quota {rem:.0f}% ({name})"
+                    + (f" - {ahead:.0f}% running" if ahead else "")
+                    + (f" - {mine:.0f}% this task = {left:.0f}%" if mine or ahead else "")
+                )
                 msg = f"{calc} {'<=' if left <= stop else '>'} {weight} reserve {stop}%"
                 if left <= stop:
                     deny(msg)
                 else:
                     c["why"].append(msg)
-        elif q and q.get("stale") and any(
-            w.get("remaining_percent") is not None
-            and w["remaining_percent"] <= stop
-            and (w.get("resets_at") or 0) > now
-            for w in q.get("windows", [])
+        elif (
+            q
+            and q.get("stale")
+            and any(
+                w.get("remaining_percent") is not None
+                and w["remaining_percent"] <= stop
+                and (w.get("resets_at") or 0) > now
+                for w in q.get("windows", [])
+            )
         ):
             deny(f"quota stale below {weight} reserve {stop}%")
         elif unknown_policy == "deny":
@@ -142,7 +151,11 @@ def decide(
             pick = pool[0]
 
     selected = pick["agent"] if pick else None
-    independent = (account(cfg, selected) != (exclude_account or owner_account)) if (pol.get("independent") and selected) else None
+    independent = (
+        (account(cfg, selected) != (exclude_account or owner_account))
+        if (pol.get("independent") and selected)
+        else None
+    )
     if pick:
         reason = f"{selected} for {role}/{weight} by {how}: {'; '.join(pick['why'])}"
         skipped = [

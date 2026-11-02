@@ -4,16 +4,16 @@ A worker terminal is runtime state. A task is done only when its report ends
 with a sentinel and, for execution, its branch carries commits on a clean tree.
 """
 
-import json
 import fcntl
+import json
 import os
 import re
 import shutil
 import statistics
 import subprocess
 import time
-from pathlib import Path
 from contextlib import contextmanager, suppress
+from pathlib import Path
 
 from . import hc, quota, route
 from .config import project_name
@@ -138,9 +138,16 @@ def ledger():
     now = time.time()
     data["history"] = [e for e in data["history"] if now - e.get("finished_at", 0) < 86400]
     old = data["entries"]
-    data["entries"] = [e for e in old if now - e.get("started_at", 0) < 86400
-                       and ((e.get("state") == "starting" and now - e.get("started_at", 0) < 60) or live is None
-                            or e.get("terminal") in live)]
+    data["entries"] = [
+        e
+        for e in old
+        if now - e.get("started_at", 0) < 86400
+        and (
+            (e.get("state") == "starting" and now - e.get("started_at", 0) < 60)
+            or live is None
+            or e.get("terminal") in live
+        )
+    ]
     if len(old) != len(data["entries"]):
         write_json(path, data)
     return data
@@ -153,8 +160,11 @@ def save_ledger(data):
 def ledger_drop(cfg, tid):
     with admission():
         data = ledger()
-        data["entries"] = [e for e in data["entries"]
-                           if not (e["project_root"] == str(cfg["root"]) and e["task_id"] == tid)]
+        data["entries"] = [
+            e
+            for e in data["entries"]
+            if not (e["project_root"] == str(cfg["root"]) and e["task_id"] == tid)
+        ]
         save_ledger(data)
 
 
@@ -197,7 +207,11 @@ def pending(cfg, quotas, measured, data=None):
             estimates = sum(e.get("cost_estimate", {}).get(name, 0) for e in group)
             earliest = min(group, key=lambda e: e["started_at"])
             start = earliest.get("quota_start", {}).get(name)
-            drop = max(0, start - w["remaining_percent"]) if start is not None and w["remaining_percent"] is not None else 0
+            drop = (
+                max(0, start - w["remaining_percent"])
+                if start is not None and w["remaining_percent"] is not None
+                else 0
+            )
             out.setdefault(acct, {})[name] = max(0.0, estimates - drop)
     return out
 
@@ -315,8 +329,11 @@ def wt_merge(cfg, tid):
     collisions = changed & untracked
     if collisions:
         raise SystemExit("merge would overwrite untracked files: " + ", ".join(sorted(collisions)))
-    preflight = subprocess.run(["git", "-C", str(cfg["root"]), "merge-tree", "--write-tree", "HEAD", branch],
-                              capture_output=True, text=True)
+    preflight = subprocess.run(
+        ["git", "-C", str(cfg["root"]), "merge-tree", "--write-tree", "HEAD", branch],
+        capture_output=True,
+        text=True,
+    )
     if preflight.returncode:
         raise SystemExit(f"merge conflict: {preflight.stdout.strip() or preflight.stderr.strip()}")
     if path.exists():
@@ -332,9 +349,23 @@ def wt_merge(cfg, tid):
 def planning_guard(cfg, t):
     files = set()
     if t.get("branch"):
-        files.update(git(cfg, "diff", "--name-only", f"{t['base']}..{t['branch']}", "--", ".planning/").splitlines())
+        files.update(
+            git(
+                cfg, "diff", "--name-only", f"{t['base']}..{t['branch']}", "--", ".planning/"
+            ).splitlines()
+        )
         if Path(t["cwd"]).exists():
-            files.update(git(cfg, "status", "--porcelain", "--untracked-files=all", "--", ".planning/", cwd=t["cwd"]).splitlines())
+            files.update(
+                git(
+                    cfg,
+                    "status",
+                    "--porcelain",
+                    "--untracked-files=all",
+                    "--",
+                    ".planning/",
+                    cwd=t["cwd"],
+                ).splitlines()
+            )
     if files:
         raise SystemExit("worker changed .planning/: " + ", ".join(sorted(files)))
 
@@ -359,8 +390,17 @@ PROTOCOL = """
 
 
 def dispatch(
-    cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, base="HEAD", report=None,
-    replace=False, of=None,
+    cfg,
+    task_file,
+    role,
+    tid,
+    agent=None,
+    heavy=None,
+    worktree=None,
+    base="HEAD",
+    report=None,
+    replace=False,
+    of=None,
 ):
     if not ID_RE.match(tid):
         raise SystemExit(f"invalid task id {tid!r}: {ID_RE.pattern}")
@@ -376,8 +416,15 @@ def dispatch(
                 raise SystemExit(f"task {tid} already exists (use --replace for a collected task)")
             if wt_paths(cfg, tid)[0].exists():
                 raise SystemExit(f"task {tid} worktree still exists; merge or remove it first")
-        d = decide(cfg, role, quotas, heavy=heavy, override=agent or ov,
-                   exclude_account=excluded, ledger_data=data)
+        d = decide(
+            cfg,
+            role,
+            quotas,
+            heavy=heavy,
+            override=agent or ov,
+            exclude_account=excluded,
+            ledger_data=data,
+        )
         if agent and d["selected"] != agent:
             raise SystemExit(f"requested agent {agent} is not eligible: {d['reason']}")
         log_decision(cfg, d, tid)
@@ -395,15 +442,25 @@ def dispatch(
                 shutil.move(old_report, archive / f"{tid}.md")
         acct = quota.account(cfg, aid)
         marks = quota_mark(quotas.get(aid))
-        raw_windows = {w["name"]: w["remaining_percent"]
-                       for w in (quotas.get(aid) or {}).get("windows", [])
-                       if w["remaining_percent"] is not None}
-        estimates = {name: route.cost(cfg, costs(cfg, data), aid, d["weight"], name)
-                     for name in raw_windows}
-        entry = {"account": acct, "project_root": str(cfg["root"]), "task_id": tid,
-                 "agent": aid, "weight": d["weight"], "cost_estimate": estimates,
-                 "started_at": time.time(), "quota_start": raw_windows,
-                 "state": "starting"}
+        raw_windows = {
+            w["name"]: w["remaining_percent"]
+            for w in (quotas.get(aid) or {}).get("windows", [])
+            if w["remaining_percent"] is not None
+        }
+        estimates = {
+            name: route.cost(cfg, costs(cfg, data), aid, d["weight"], name) for name in raw_windows
+        }
+        entry = {
+            "account": acct,
+            "project_root": str(cfg["root"]),
+            "task_id": tid,
+            "agent": aid,
+            "weight": d["weight"],
+            "cost_estimate": estimates,
+            "started_at": time.time(),
+            "quota_start": raw_windows,
+            "state": "starting",
+        }
         data["entries"].append(entry)
         save_ledger(data)
     a = cfg["agents"][aid]
@@ -431,9 +488,11 @@ def dispatch(
                 cwd=cwd,
                 report=report,
                 commit_rule=(
-                    f"- You are on branch `{branch}`. Do not run git commit: sandboxes often protect "
+                    f"- You are on branch `{branch}`. Do not run git commit: "
+                    "sandboxes often protect "
                     "`.git`. "
-                    f"Leave changes in the tree; the owner commits them after reading your report.\n"
+                    "Leave changes in the tree; "
+                    "the owner commits them after reading your report.\n"
                 )
                 if branch
                 else "",
@@ -511,10 +570,8 @@ def dispatch(
                 hc.rm(addr)
         ledger_drop(cfg, tid)
         if created and Path(cwd).exists():
-            try:
+            with suppress(Exception):  # best effort: the launch error is what matters
                 wt_remove(cfg, cwd)
-            except Exception:
-                pass
         save_task(cfg, {"id": tid, "state": "failed", "error": str(exc), "agent": aid})
         raise
 
@@ -522,13 +579,15 @@ def dispatch(
 def quota_mark(q):
     """Remaining and reset time for each gating window at admission."""
     if not quota.known(q):
-        return {"quota_start": None, "quota_reset_at": None,
-                "quota_start_windows": {}, "quota_resets": {}}
+        return {
+            "quota_start": None,
+            "quota_reset_at": None,
+            "quota_start_windows": {},
+            "quota_resets": {},
+        }
     names = (q.get("extra") or {}).get("gating_windows")
     windows = [w for w in q["windows"] if not names or w["name"] in names]
-    resets = [
-        w.get("resets_at") for w in windows if w.get("resets_at")
-    ]
+    resets = [w.get("resets_at") for w in windows if w.get("resets_at")]
     return {
         "quota_start": q["effective_remaining_percent"],
         "quota_reset_at": min(resets) if resets else None,
@@ -545,10 +604,13 @@ def quota_burn(cfg, t, now):
     if not q:
         return {}
     current = {w["name"]: w["remaining_percent"] for w in q["windows"]}
-    return {name: round(max(0.0, start - current[name]), 1)
-            for name, start in t["quota_start_windows"].items()
-            if name in current and current[name] is not None
-            and not (t.get("quota_resets", {}).get(name) and t["quota_resets"][name] <= now)}
+    return {
+        name: round(max(0.0, start - current[name]), 1)
+        for name, start in t["quota_start_windows"].items()
+        if name in current
+        and current[name] is not None
+        and not (t.get("quota_resets", {}).get(name) and t["quota_resets"][name] <= now)
+    }
 
 
 def overlapped(cfg, t, now):
@@ -556,11 +618,13 @@ def overlapped(cfg, t, now):
     with admission():
         data = ledger()
     entries = data["entries"] + data["history"]
-    return any(e["account"] == acct and
-               (e["project_root"], e["task_id"]) != (str(cfg["root"]), t["id"])
-               and e["started_at"] < now
-               and e.get("finished_at", now) > t.get("started_at", now)
-               for e in entries)
+    return any(
+        e["account"] == acct
+        and (e["project_root"], e["task_id"]) != (str(cfg["root"]), t["id"])
+        and e["started_at"] < now
+        and e.get("finished_at", now) > t.get("started_at", now)
+        for e in entries
+    )
 
 
 def startup_check(name, seconds=25):
@@ -650,8 +714,7 @@ def collect(cfg, tid, keep_worker=False):
                 "evidence": ev,
             }
     if keep_worker:
-        return {"task": tid, "state": "running", "why": "worker kept; no commit",
-                "evidence": ev}
+        return {"task": tid, "state": "running", "why": "worker kept; no commit", "evidence": ev}
     planning_guard(cfg, t)
     hc.kill(t["terminal"])
     try:
@@ -687,11 +750,21 @@ def collect(cfg, tid, keep_worker=False):
         t.update(quota_burn=quota_burn(cfg, t, now), quota_shared=overlapped(cfg, t, now))
     with admission():
         data = ledger()
-        data["entries"] = [e for e in data["entries"] if not
-                           (e["project_root"] == str(cfg["root"]) and e["task_id"] == tid)]
+        data["entries"] = [
+            e
+            for e in data["entries"]
+            if not (e["project_root"] == str(cfg["root"]) and e["task_id"] == tid)
+        ]
         acct = quota.account(cfg, t["agent"])
-        data["history"].append({"account": acct, "project_root": str(cfg["root"]),
-                                "task_id": tid, "started_at": t["started_at"], "finished_at": now})
+        data["history"].append(
+            {
+                "account": acct,
+                "project_root": str(cfg["root"]),
+                "task_id": tid,
+                "started_at": t["started_at"],
+                "finished_at": now,
+            }
+        )
         if not t.get("quota_shared"):
             for name, value in t.get("quota_burn", {}).items():
                 key = f"{acct}/{t['weight']}/{name}"

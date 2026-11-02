@@ -71,7 +71,9 @@ def finish(res, stale_after_s, now):
 def codex_rpc(timeout=15.0, argv=None):
     """Ask the Codex app-server for live account rate limits (one JSON-RPC call)."""
     argv = argv or ["codex", "app-server"]
-    p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    p = subprocess.Popen(
+        argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
     try:
         msgs = [
             {
@@ -286,11 +288,7 @@ def probe_static(agent, spec, now):
         "source": "agents config",
         "observed_at": now,
         "stale": False,
-        "windows": [
-            window(
-                "budget", 100 - float(spec["remaining_percent"]), reset, period, now
-            )
-        ],
+        "windows": [window("budget", 100 - float(spec["remaining_percent"]), reset, period, now)],
         "extra": {},
     }
     return finish(res, 0, now)
@@ -338,7 +336,8 @@ def gate(cfg, aid, res):
         gating = [w for w in res["windows"] if w["name"] in names]
         res["effective_remaining_percent"] = (
             min(w["remaining_percent"] for w in gating)
-            if gating and all(w["remaining_percent"] is not None for w in gating) else None
+            if gating and all(w["remaining_percent"] is not None for w in gating)
+            else None
         )
         res["extra"]["gating_windows"] = names
         res["available"] = res["effective_remaining_percent"] is not None
@@ -377,7 +376,9 @@ def all_quotas(cfg, max_age=60.0, refresh=False):
         for w in c["windows"]:
             if w.get("resets_at") and w["resets_at"] <= now:
                 w["remaining_percent"] = None
-        c = finish(c, 60 * cfg["routing"].get("unknown_quota", {}).get("stale_after_minutes", 30), now)
+        c = finish(
+            c, 60 * cfg["routing"].get("unknown_quota", {}).get("stale_after_minutes", 30), now
+        )
         out[aid] = gate(cfg, aid, c)
     if changed:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -405,6 +406,11 @@ def headroom(q, now=None):
     now = now or time.time()
     names = (q.get("extra") or {}).get("gating_windows")
     ws = [w for w in q["windows"] if not names or w["name"] in names] or q["windows"]
-    w = min(ws, key=lambda w: w["remaining_percent"] if w["remaining_percent"] is not None else float("inf"))
+    w = min(
+        ws,
+        key=lambda w: (
+            w["remaining_percent"] if w["remaining_percent"] is not None else float("inf")
+        ),
+    )
     hours = max(1.0, ((w.get("resets_at") or now + 3600 * 24 * 7) - now) / 3600)
     return round(w["remaining_percent"] / hours, 2)
