@@ -210,18 +210,31 @@ def probe_static(agent, spec, now):
 
 # ---------------------------------------------------------------- facade
 
-def probe(cfg, aid, now=None):
+def probe(cfg, aid, now=None, shared=None):
+    """One reading per probe kind: agent variants (e.g. two Codex models on one
+    account) share the account's quota. `shared` caches readings within a call."""
     now = now or time.time()
     a = cfg["agents"][aid]
     stale_s = 60 * cfg["routing"].get("unknown_quota", {}).get("stale_after_minutes", 30)
     kind = a.get("quota", "none")
-    if kind == "codex":
-        return probe_codex(now, stale_s)
-    if kind == "claude":
-        return probe_claude(now, stale_s)
-    if kind == "static":
-        return probe_static(aid, a.get("quota_static"), now)
-    return unknown(aid, "no quota probe for this agent")
+    shared = {} if shared is None else shared
+    if kind in ("codex", "claude"):
+        if kind not in shared:
+            shared[kind] = probe_codex(now, stale_s) if kind == "codex" else probe_claude(now, stale_s)
+        res = json.loads(json.dumps(shared[kind]))
+        res["agent"] = aid
+    elif kind == "static":
+        res = probe_static(aid, a.get("quota_static"), now)
+    else:
+        return unknown(aid, "no quota probe for this agent")
+    # Routing may consider only some windows (e.g. a team that watches the
+    # weekly window by hand). Other windows stay visible but do not gate.
+    names = a.get("quota_windows")
+    if names and res["windows"]:
+        gating = [w for w in res["windows"] if w["name"] in names]
+        res["effective_remaining_percent"] = min(w["remaining_percent"] for w in gating) if gating else None
+        res["extra"]["gating_windows"] = names
+    return res
 
 
 def all_quotas(cfg, max_age=60.0, refresh=False):
@@ -232,13 +245,13 @@ def all_quotas(cfg, max_age=60.0, refresh=False):
         cache = json.loads(QUOTA_CACHE.read_text())
     except (OSError, json.JSONDecodeError):
         pass
-    out, changed = {}, False
+    out, changed, shared = {}, False, {}
     for aid in cfg["agents"]:
         c = cache.get(aid)
         if not refresh and c and now - c.get("probed_at", 0) < max_age:
             out[aid] = c
             continue
-        q = probe(cfg, aid, now)
+        q = probe(cfg, aid, now, shared)
         q["probed_at"] = now
         out[aid] = cache[aid] = q
         changed = True

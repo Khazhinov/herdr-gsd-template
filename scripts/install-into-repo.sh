@@ -32,7 +32,7 @@ copy_tree_conflict_safe() {
   [[ -d "$srcroot" ]] || return
   while IFS= read -r -d '' src; do
     sub=${src#"$srcroot/"}
-    case "$sub" in merge-required/*|runtime/*|worktrees/*|*__pycache__*|*.pyc) continue;; esac
+    case "$sub" in merge-required/*|runtime/*|worktrees/*|template-repo|*.local.toml|*__pycache__*|*.pyc) continue;; esac
     copy_one "$src" "$rel/$sub"
   done < <(find "$srcroot" -type f -print0)
 }

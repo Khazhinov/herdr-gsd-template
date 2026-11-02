@@ -168,6 +168,23 @@ class Quotas(unittest.TestCase):
             snap.write_text(json.dumps({"observed_at": NOW, "rate_limits": None}))
             self.assertFalse(quota.probe_claude(NOW, 1800, snapshot=snap)["available"])
 
+    def test_variants_share_one_reading_and_gate_on_chosen_windows(self):
+        c = cfg()
+        c["agents"]["codex-exec"] = dict(c["agents"]["codex"], quota_windows=["5h"])
+        calls = []
+        orig = quota.probe_codex
+        quota.probe_codex = lambda now, s: calls.append(1) or quota.finish(quota.codex_from_rpc(self.RPC, now), s, now)
+        try:
+            shared = {}
+            a = quota.probe(c, "codex", NOW, shared)
+            b = quota.probe(c, "codex-exec", NOW, shared)
+        finally:
+            quota.probe_codex = orig
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(a["effective_remaining_percent"], 41.0)
+        self.assertEqual(b["effective_remaining_percent"], 73.0)  # weekly window does not gate
+        self.assertEqual(b["agent"], "codex-exec")
+
     def test_headroom(self):
         self.assertEqual(quota.headroom(q("x", 50, resets_in_h=10), NOW), 5.0)
         self.assertIsNone(quota.headroom(quota.unknown("x", "r"), NOW))
