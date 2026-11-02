@@ -111,7 +111,13 @@ def main(a):
         save(s)
         for line in sys.stdin:
             req = json.loads(line)
-            res = {"version": 1} if req["method"] != "doc.get" else {"value": None, "version": 0}
+            if req["method"] == "terminal.list":
+                all_ = (req.get("params") or {}).get("all")
+                res = {"terminals": [x for x in s["terms"].values() if all_ or x["state"] == "live"]}
+            elif req["method"] == "doc.get":
+                res = {"value": None, "version": 0}
+            else:
+                res = {"version": 1}
             print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": res}), flush=True)
     else:
         save(s)

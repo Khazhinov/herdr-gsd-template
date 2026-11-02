@@ -44,7 +44,16 @@ def available():
 
 
 def ls(all_=False):
-    r = call("ls", "--json", *(["--all"] if all_ else []))
+    """Full terminal facts (labels, foreground cwd, status object) via RPC;
+    `hc ls` prints only a summary row per terminal."""
+    try:
+        rpc = RPC()
+        try:
+            r = rpc.call("terminal.list", all=all_)
+        finally:
+            rpc.close()
+    except (OSError, HCError):
+        r = call("ls", "--json", *(["--all"] if all_ else []))
     return r.get("terminals", []) if isinstance(r, dict) else []
 
 
