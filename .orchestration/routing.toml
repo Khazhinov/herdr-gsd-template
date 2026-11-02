@@ -1,0 +1,79 @@
+# Routing policy. The scheduler (scripts/orchlib/route.py) applies it
+# deterministically and records a human-readable reason for every choice.
+
+# The orchestration owner: the only runtime that writes canonical .planning/.
+# Change it only at a durable boundary (OPERATIONS.md, "Owner handoff").
+owner = "claude"
+
+# Stability levels that automatic routing may choose.
+auto_stability = ["supported"]
+
+[roles.execute]
+# ordered: first eligible agent in chain.
+# use-or-lose: among eligible agents, the one whose quota would expire unused
+#   soonest (highest remaining percent per hour until its tightest window resets).
+strategy = "ordered"
+chain = ["codex", "claude", "kimi", "zcode"]
+heavy = true
+
+[roles.review]
+strategy = "ordered"
+chain = ["codex", "kimi", "zcode", "claude"]
+heavy = false
+# Prefer an agent other than the owner; falling back to the owner is allowed
+# but the decision is marked independent = false.
+independent = true
+
+[roles.plan]
+strategy = "ordered"
+chain = ["claude", "codex", "kimi"]
+heavy = true
+
+[roles.research]
+strategy = "cheapest"
+chain = ["kimi", "zcode", "codex", "claude"]
+heavy = false
+
+[roles.debug]
+strategy = "ordered"
+chain = ["codex", "claude"]
+heavy = true
+
+# Percent of the most depleted quota window below which an agent stops
+# receiving new work of that weight. Running tasks are never migrated.
+[reserves.codex]
+heavy_stop_percent = 30
+light_stop_percent = 10
+
+[reserves.claude]
+heavy_stop_percent = 20
+light_stop_percent = 10
+
+[reserves.default]
+heavy_stop_percent = 30
+light_stop_percent = 10
+
+[unknown_quota]
+# deny: an agent without a trustworthy quota reading never gets heavy work
+# automatically. allow: light work may still go to it.
+heavy = "deny"
+light = "allow"
+# A reading older than this is treated as unknown.
+stale_after_minutes = 30
+
+[workers]
+# Show worker terminals as tabs in the owner's Herdr App space.
+show_in_app = true
+# Keep workers alive if the owner's program ends; tasks are durable anyway.
+outlive_parent = true
+# Relative to the repository: workers inherit the owner's folder trust.
+worktree_root = ".orchestration/worktrees"
+branch_prefix = "orch/"
+# Caller environment carried into workers (herdr-core starts programs with
+# its own environment, which often lacks ~/.local/bin and proxies).
+pass_env = ["PATH", "LANG", "LC_ALL", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy",
+            "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy", "HERDR_TOOL_AGENTS"]
+
+[watch]
+# Seconds between quota refreshes in `orch.py watch`.
+quota_interval = 60

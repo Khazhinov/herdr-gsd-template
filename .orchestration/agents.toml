@@ -1,0 +1,60 @@
+# Agent registry: every coding runtime the scheduler may start.
+#
+# The scheduler never branches on an agent id. It reads only these fields:
+#   command        argv started through `hc run` (the task prompt is appended
+#                  when prompt = "arg", or sent after readiness when "send")
+#   worktree_args  extra argv for runs inside a git worktree; {git_common_dir}
+#                  expands to the main repository's .git, {cwd} to the worktree
+#   capabilities   roles it may take: owner, plan, execute, review, research, debug
+#   cost_tier      cheap < standard < premium
+#   quota          probe id in scripts/orchlib/quota.py (codex, claude, static, none)
+#   stability      supported | candidate | experimental; routing.toml decides
+#                  which levels may be chosen automatically
+#   max_parallel   live workers of this agent at once
+#
+# Projects override fields in .orchestration/agents.local.toml (git-ignored)
+# or by editing this file. Do not put unrestricted sandbox/approval flags here:
+# the public default must stay safe (see docs/SECURITY in OPERATIONS.md).
+
+[agents.claude]
+command = ["claude"]
+prompt = "arg"
+capabilities = ["owner", "plan", "execute", "review", "research", "debug"]
+cost_tier = "premium"
+quota = "claude"
+stability = "supported"
+max_parallel = 2
+
+[agents.codex]
+# --no-daemon is mandatory under herdr-core: without it Codex executes
+# commands in its shared daemon, outside the hc terminal.
+command = ["codex", "--no-daemon"]
+# Worktree runs: let the sandbox write the shared .git, and trust the new
+# checkout explicitly (Codex trusts per git root, a worktree is a new root).
+worktree_args = ["--add-dir", "{git_common_dir}", "-c", 'projects."{cwd}".trust_level="trusted"']
+prompt = "arg"
+capabilities = ["execute", "review", "research", "debug"]
+cost_tier = "premium"
+quota = "codex"
+stability = "supported"
+max_parallel = 2
+
+[agents.kimi]
+# Kimi Code CLI. Not smoke-tested yet: kept out of automatic routing by
+# stability = "candidate" until tests/smoke-agent.sh passes for it.
+command = ["kimi"]
+prompt = "send"
+capabilities = ["execute", "review", "research"]
+cost_tier = "standard"
+quota = "none"
+stability = "candidate"
+max_parallel = 1
+
+[agents.zcode]
+command = ["zcode"]
+prompt = "send"
+capabilities = ["execute", "review", "research"]
+cost_tier = "standard"
+quota = "none"
+stability = "experimental"
+max_parallel = 1

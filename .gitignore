@@ -3,3 +3,5 @@ __pycache__/
 .orchestration/runtime/
 .orchestration/merge-required/
 docs/peer/*.tmp
+.orchestration/worktrees/
+docs/orch/*.tmp
