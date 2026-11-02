@@ -365,7 +365,7 @@ export default class MissionControl extends View {
           .tooltip(`${w.name} window: ${Math.round(w.used_percent)}% used, resets in ${span((w.resets_at || 0) - Date.now() / 1000)}`)
           .child(div().w(22).text_color(t.dim).child(w.name))
           .child(div().flex_1().h(5).rounded(3).bg(t.surface)
-            .child(div().h(5).rounded(3).bg(col).w(Math.max(2, Math.round(pct * 1.6)))))
+            .child(div().h(5).rounded(3).bg(col).w(`${Math.max(1, Math.round(pct))}%`)))
           .child(div().w(34).child(`${Math.round(pct)}%`))
           .child(div().w(110).text_color(t.muted).text_size(11).child(this.resetAt(w.resets_at))));
       }
