@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-11-02
+
+- Mission Control wraps long advice and displays the full command in a compact panel.
+- Script execute modes are recorded in Git and checked by the offline suite.
+- Template update advice refreshes at hub startup, phase changes and explicit `orch.py advice` calls.
+
 ## 0.2.0 - 2026-11-02
 
 Known limitations: the hub, its herdr-core document and the `orch.project` label derive from the

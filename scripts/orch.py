@@ -413,7 +413,10 @@ def cmd_watch(cfg, a):
         except OSError:
             m = 0
         if plan is None or m != plan_mtime or now - last_plan > 300:
-            plan, plan_mtime, last_plan, changed = state.planning(cfg["root"]), m, now, True
+            next_plan = state.planning(cfg["root"])
+            if not last_plan or (plan or {}).get("phase") != (next_plan or {}).get("phase"):
+                advice.update(cfg, now, force=True)
+            plan, plan_mtime, last_plan, changed = next_plan, m, now, True
         if not changed:
             continue
         try:
@@ -453,6 +456,7 @@ def cmd_hub(cfg, a):
         print(f"{name} stopped" if live else f"{name} not running")
         return 0
     if live:
+        advice.update(cfg, force=True)
         print(f"{name} already running as {live[0]['address']}")
         return 0
     # No herdr.space label: the hub stays out of the App's tabs; the Mission
@@ -478,6 +482,7 @@ def cmd_hub(cfg, a):
 
 def cmd_advice(cfg, a):
     running = sum(1 for t in tasks.all_tasks(cfg) if t.get("state") == "running")
+    advice.update(cfg, force=True)
     r = advice.compute(cfg, quota.all_quotas(cfg), running)
     if not out(r, a.json):
         ctx = r["context"]

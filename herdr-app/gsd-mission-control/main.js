@@ -208,9 +208,10 @@ export default class MissionControl extends View {
     return h_flex().id(`adv-${i}`).items_start().gap(6)
       .when(Boolean(x.command), (el) => el.tooltip(x.command))
       .child(div().pt(4).child(this.dot(color, 6)))
-      .child(v_flex().flex_1().gap(1)
-        .child(div().text_color(x.level === "info" ? t.muted : t.foreground).child(x.text))
-        .when(Boolean(x.command), (el) => el.child(div().text_size(10.5).text_color(t.dim).truncate().child(x.command))));
+      .child(v_flex().flex_1().min_w_0().gap(4)
+        .child(div().min_w_0().whitespace_normal().text_color(x.level === "info" ? t.muted : t.foreground).child(x.text))
+        .when(Boolean(x.command), (el) => el.child(div().min_w_0().whitespace_normal().px(6).py(3)
+          .rounded(4).bg(t.surface).text_size(10.5).text_color(t.muted).child(x.command))));
   }
 
   section(title, t, badge, children) {

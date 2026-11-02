@@ -84,6 +84,23 @@ class Advice(unittest.TestCase):
         r = advice.compute(self.cfg, {"claude": q("claude", 80)}, 0)
         self.assertEqual([i["kind"] for i in r["items"]], ["update"])
 
+    def test_new_release_is_seen_at_a_forced_boundary(self):
+        up = self.td / "up"
+        subprocess.run(["git", "init", "-q", str(up)], check=True)
+        g = ["git", "-C", str(up), "-c", "user.email=t@example.invalid", "-c", "user.name=T"]
+        subprocess.run(g + ["commit", "-q", "--allow-empty", "-m", "x"], check=True)
+        subprocess.run(g + ["tag", "v0.2.0"], check=True)
+        (self.root / ".orchestration/template.toml").write_text(f'version = "0.2.0"\nupstream = "{up}"\n')
+        self.assertFalse(advice.update(self.cfg, now=NOW)["available"])
+
+        # The installed project and its cache predate the new release.
+        subprocess.run(g + ["tag", "v0.2.1"], check=True)
+        self.assertFalse(advice.update(self.cfg, now=NOW + 1)["available"])
+        self.assertTrue(advice.update(self.cfg, now=NOW + 1, force=True)["available"])
+        r = advice.compute(self.cfg, {"claude": q("claude", 80)}, 0, now=NOW + 1)
+        self.assertEqual([i["kind"] for i in r["items"]], ["update"])
+        self.assertIn("template 0.2.1 available", r["items"][0]["text"])
+
     def test_claude_quota_merges_sessions(self):
         def tap(sid, five_used, five_reset):
             advice.record_session({"session_id": sid, "cwd": str(self.root), "rate_limits": {

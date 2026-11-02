@@ -25,6 +25,19 @@ required=(
 for f in "${required[@]}"; do [[ -f "$f" ]] || fail "missing $f"; done
 
 for f in scripts/*.sh scripts/*.py; do [[ -x "$f" ]] || fail "not executable $f"; done
+# DrvFS may report every file as executable; CI uses the mode stored by Git.
+if (( TEMPLATE )); then
+  python3 - <<'PY'
+import subprocess
+from pathlib import Path
+
+for line in subprocess.check_output(['git', 'ls-files', '-s', '--', 'scripts'], text=True).splitlines():
+    mode, _, _, path = line.split(maxsplit=3)
+    file = Path(path)
+    if file.parent == Path('scripts') and file.suffix in {'.sh', '.py'} and mode != '100755':
+        raise SystemExit(f'FAIL: Git mode is {mode}, expected 100755: {path}')
+PY
+fi
 for f in scripts/*.sh; do bash -n "$f"; done
 python3 -m py_compile scripts/*.py scripts/orchlib/*.py
 

@@ -191,15 +191,18 @@ def latest_release(upstream, max_age_h=24, now=None):
     except (OSError, json.JSONDecodeError, KeyError):
         pass
     try:
-        out = subprocess.run(
+        result = subprocess.run(
             ["git", "ls-remote", "--tags", "--refs", upstream],
             capture_output=True,
             text=True,
             timeout=20,
             env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-        ).stdout
+        )
     except (OSError, subprocess.TimeoutExpired):
         return None
+    if result.returncode:
+        return None
+    out = result.stdout
     vers = [v for v in (_ver(line.rsplit("/", 1)[-1]) for line in out.splitlines()) if v]
     latest = ".".join(map(str, max(vers))) if vers else None
     quota.CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -207,12 +210,12 @@ def latest_release(upstream, max_age_h=24, now=None):
     return latest
 
 
-def update(cfg, now=None, check=True):
+def update(cfg, now=None, check=True, force=False):
     t = template_info(cfg["root"])
     cur, up = t.get("version"), t.get("upstream")
     if not cur or not up:
         return None
-    latest = latest_release(up, settings(cfg)["update_check_hours"], now) if check else None
+    latest = latest_release(up, 0 if force else settings(cfg)["update_check_hours"], now) if check else None
     newer = bool(latest and _ver(latest) and _ver(cur) and _ver(latest) > _ver(cur))
     return {"installed": cur, "latest": latest, "upstream": up, "available": newer}
 
