@@ -35,14 +35,6 @@ def call(*args, check=True, timeout=None):
     return out
 
 
-def available():
-    try:
-        call("server", "status", "--json", timeout=10)
-        return True
-    except (OSError, HCError, subprocess.TimeoutExpired):
-        return False
-
-
 def ls(all_=False):
     """Full terminal facts (labels, foreground cwd, status object) via RPC;
     `hc ls` prints only a summary row per terminal."""

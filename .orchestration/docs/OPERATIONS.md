@@ -25,6 +25,14 @@
 [agents.codex]
 command = ["codex", "--no-daemon", "-m", "<model>", "-c", "model_reasoning_effort=high"]
 
+[agents.codex-review]                # вариант модели на той же учётной записи
+command = ["codex", "--no-daemon", "-m", "<review-model>"]
+capabilities = ["review"]
+cost_tier = "premium"
+quota = "codex"                      # общий замер квоты с [agents.codex]
+quota_windows = ["5h"]               # недельное окно видно, но не ограничивает
+stability = "supported"
+
 [agents.kimi]
 stability = "supported"          # после smoke-теста
 quota = "static"

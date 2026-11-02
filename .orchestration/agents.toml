@@ -7,7 +7,12 @@
 #                  expands to the main repository's .git, {cwd} to the worktree
 #   capabilities   roles it may take: owner, plan, execute, review, research, debug
 #   cost_tier      cheap < standard < premium
-#   quota          probe id in scripts/orchlib/quota.py (codex, claude, static, none)
+#   quota          probe id in scripts/orchlib/quota.py (codex, claude, static, none);
+#                  agents with the same probe share one reading (model variants
+#                  of one account)
+#   quota_windows  optional: only these windows ("5h", "7d") gate routing; the
+#                  others stay visible on the dashboard
+#   quota_static   for quota = "static": {remaining_percent = N, resets_at = unix}
 #   stability      supported | candidate | experimental; routing.toml decides
 #                  which levels may be chosen automatically
 #   max_parallel   live workers of this agent at once
