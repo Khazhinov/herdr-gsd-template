@@ -338,6 +338,11 @@ class Lifecycle(unittest.TestCase):
         os.environ.update(self.env)
         quota.CACHE_DIR = Path(self.env["ORCH_CACHE_DIR"])
         quota.QUOTA_CACHE = quota.CACHE_DIR / "quotas.json"
+        installed = mock.patch.object(tasks, "installed", side_effect=lambda cfg: {
+            aid: aid in ("codex", "claude") for aid in cfg["agents"]
+        })
+        installed.start()
+        self.addCleanup(installed.stop)
         import orch
         self.orch = orch
 
@@ -604,6 +609,21 @@ class Lifecycle(unittest.TestCase):
 
 
 class ShellChecks(unittest.TestCase):
+    def test_hub_restart_replaces_publisher(self):
+        import orch
+        from types import SimpleNamespace
+
+        c = config.load(SRC)
+        old = {"name": f"orch-{config.project_name(c)}"[:32], "address": "old-hub"}
+        with mock.patch.object(hc, "ls", return_value=[old]), \
+             mock.patch.object(hc, "kill") as kill, \
+             mock.patch.object(hc, "rm") as rm, \
+             mock.patch.object(hc, "run", return_value={"address": "new-hub"}) as run:
+            self.assertEqual(orch.cmd_hub(c, SimpleNamespace(op="restart")), 0)
+        kill.assert_called_once_with("old-hub")
+        rm.assert_called_once_with("old-hub")
+        run.assert_called_once()
+
     def test_self_check_preserves_pycache_and_installer_accepts_worktree(self):
         script = (SRC / "scripts/self-check.sh").read_text()
         self.assertIn("PYTHONDONTWRITEBYTECODE=1", script)

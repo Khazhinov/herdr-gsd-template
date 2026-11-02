@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Mission Control offers a hub restart button.
+- Owner handoff advice shows a conditional warning when the last low quota reading is stale but its window has not reset.
+- Offline lifecycle tests no longer depend on Claude or Codex CLI being installed on the runner.
+
 ## 0.2.1 - 2026-11-02
 
 - Mission Control wraps long advice and displays the full command in a compact panel.

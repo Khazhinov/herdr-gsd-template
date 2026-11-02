@@ -72,6 +72,22 @@ class Advice(unittest.TestCase):
         own = next(i for i in r["items"] if i["kind"] == "owner")
         self.assertIsNone(own["command"])
 
+    def test_stale_low_quota_advises_only_before_window_reset(self):
+        old = q("claude", 8)
+        old["stale"] = True
+        quotas = {"claude": old, "codex": q("codex", 70)}
+        r = advice.compute(self.cfg, quotas, 0, now=NOW, check_update=False)
+        own = next(i for i in r["items"] if i["kind"] == "owner")
+        self.assertEqual(own["level"], "warn")
+        self.assertIn("stale reading", own["text"])
+        self.assertIn("verify the current quota", own["text"])
+        self.assertIn("hand over to codex", own["text"])
+        self.assertTrue(r["owner_quota_stale"])
+
+        old["windows"][0]["resets_at"] = NOW - 1
+        r = advice.compute(self.cfg, quotas, 0, now=NOW, check_update=False)
+        self.assertFalse(any(i["kind"] == "owner" for i in r["items"]))
+
     def test_update_check_uses_tags(self):
         up = self.td / "up"
         subprocess.run(["git", "init", "-q", str(up)], check=True)

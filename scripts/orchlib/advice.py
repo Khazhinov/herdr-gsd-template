@@ -258,9 +258,19 @@ def compute(cfg, quotas, running, now=None, check_update=True):
                 }
             )
     q = quotas.get(owner)
-    rem = q.get("effective_remaining_percent") if quota.known(q) else None
+    last = q.get("effective_remaining_percent") if q else None
+    stale_low = bool(
+        q and q.get("stale") and q.get("available")
+        and last is not None and last < st["owner_switch_percent"]
+        and any(w.get("remaining_percent") == last and (w.get("resets_at") or 0) > now
+                for w in q.get("windows", []))
+    )
+    rem = last if quota.known(q) or stale_low else None
     switch_to = None
     if rem is not None and rem < st["owner_switch_percent"]:
+        reading = (f"last reported {rem:.0f}% quota left (stale reading)"
+                   if stale_low else f"has {rem:.0f}% quota left")
+        verify = "verify the current quota, " if stale_low else ""
         acct = quota.account(cfg, owner)
         best = None
         for aid, b in cfg["agents"].items():
@@ -278,10 +288,10 @@ def compute(cfg, quotas, running, now=None, check_update=True):
             switch_to = best[0]
             items.append(
                 {
-                    "level": "act",
+                    "level": "warn" if stale_low else "act",
                     "kind": "owner",
-                    "text": f"owner {owner} has {rem:.0f}% quota left: "
-                    "stop new work, /gsd-pause-work, "
+                    "text": f"owner {owner} {reading}: "
+                    f"stop new work, {verify}/gsd-pause-work, "
                     f"then hand over to {best[0]} ({best[1]:.0f}% left)",
                     "command": f"python3 scripts/orch.py owner set {best[0]} --launch",
                 }
@@ -289,11 +299,11 @@ def compute(cfg, quotas, running, now=None, check_update=True):
         else:
             items.append(
                 {
-                    "level": "act",
+                    "level": "warn" if stale_low else "act",
                     "kind": "owner",
-                    "text": f"owner {owner} has {rem:.0f}% quota left and "
+                    "text": f"owner {owner} {reading} and "
                     "no other owner-capable agent has more: "
-                    "pause at the next safe point",
+                    f"{verify}pause at the next safe point",
                     "command": None,
                 }
             )
@@ -324,6 +334,7 @@ def compute(cfg, quotas, running, now=None, check_update=True):
     return {
         "owner": owner,
         "owner_quota": rem,
+        "owner_quota_stale": stale_low,
         "context": ctx,
         "safe_point": safe,
         "handoff": h,

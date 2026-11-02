@@ -197,7 +197,9 @@ export default class MissionControl extends View {
           this.pill(`ctx ${Math.round(s.advice.context.tokens / 1000)}k`, t)))
         .child(div().id("hub").text_color(t.dim).text_size(11).tooltip("Peek at the hub terminal")
           .on_click(() => run("terminal.peek", { terminal: hub.address }))
-          .child(`${span(Date.now() / 1000 - s.updated_at)} ago`)))
+        .child(`${span(Date.now() / 1000 - s.updated_at)} ago`))
+      .child(this.button("restart-hub", "Restart", t, (cx) => this.orch(hub, ["hub", "restart"], cx))
+        .tooltip("Restart dashboard publisher and refresh data")))
       .child(div().text_color(t.muted).truncate().child(sub))
       .when(Boolean(p && p.stopped_at), (el) => el.child(div().text_color(t.dim).truncate().child(`stopped at ${p.stopped_at}`)));
   }

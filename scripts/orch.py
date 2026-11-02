@@ -9,7 +9,7 @@ wait [--timeout S]                wait for worker news (hc wait --children any)
 collect ID [--keep-worker]        judge durable evidence, stop the worker
 status [--json]                   tasks, quotas, routing
 watch                             live dashboard + publisher (run in a Herdr pane)
-hub start|stop                    run `watch` in its own herdr-core terminal
+hub start|stop|restart            run `watch` in its own herdr-core terminal
 worktree create|merge|remove|path ID
 statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
 gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
@@ -449,12 +449,14 @@ def cmd_hub(cfg, a):
     feeds the Herdr App mod. It outlives the owner session."""
     name = f"orch-{config.project_name(cfg)}"[:32]
     live = [t for t in hc.ls() if t.get("name") == name]
-    if a.op == "stop":
+    if a.op in ("stop", "restart"):
         for t in live:
             hc.kill(t["address"])
             hc.rm(t["address"])
-        print(f"{name} stopped" if live else f"{name} not running")
-        return 0
+        if a.op == "stop":
+            print(f"{name} stopped" if live else f"{name} not running")
+            return 0
+        live = []
     if live:
         advice.update(cfg, force=True)
         print(f"{name} already running as {live[0]['address']}")
@@ -487,7 +489,9 @@ def cmd_advice(cfg, a):
     if not out(r, a.json):
         ctx = r["context"]
         size = f"{ctx['tokens'] // 1000}k" if ctx and ctx.get("tokens") else "?"
-        q = "?" if r["owner_quota"] is None else r["owner_quota"]
+        q = "?" if r["owner_quota"] is None else f"{r['owner_quota']:.0f}"
+        if r["owner_quota_stale"]:
+            q += " (stale)"
         print(f"owner {r['owner']}: quota {q}%, context {size} tokens")
         for i in r["items"]:
             print(
@@ -600,7 +604,7 @@ def main(argv=None):
     s.add_argument("--once", action="store_true")
     s.add_argument("--quiet", action="store_true")
     s = p("hub")
-    s.add_argument("op", choices=["start", "stop"])
+    s.add_argument("op", choices=["start", "stop", "restart"])
     s = p("worktree")
     s.add_argument("op", choices=["create", "merge", "remove", "path"])
     s.add_argument("id")
