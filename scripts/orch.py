@@ -402,7 +402,11 @@ def main(argv=None):
         return cmd_tools(cfg, a)
     if a.cmd == "tool-ask":
         return cmd_tools(cfg, a, ask=True)
-    return globals()["cmd_" + a.cmd.replace("-", "_")](cfg, a)
+    try:
+        return globals()["cmd_" + a.cmd.replace("-", "_")](cfg, a)
+    except (RuntimeError, hc.HCError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

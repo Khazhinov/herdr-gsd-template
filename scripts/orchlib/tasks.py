@@ -166,12 +166,12 @@ def wt_remove(cfg, path):
 
 def wt_merge(cfg, tid):
     path, branch = wt_paths(cfg, tid)
+    if git(cfg, "status", "--porcelain", "--untracked-files=no"):
+        raise SystemExit("owner tree has uncommitted changes; commit or stash before merge")
     if path.exists():
         if git(cfg, "status", "--porcelain", cwd=path):
             raise SystemExit(f"worktree dirty: {path}")
         wt_remove(cfg, path)
-    if git(cfg, "status", "--porcelain", "--untracked-files=no"):
-        raise SystemExit("owner tree has uncommitted changes; commit or stash before merge")
     git(cfg, "merge", "--no-ff", "-m", f"Merge {branch}", branch)
     git(cfg, "branch", "-d", branch)
 
@@ -189,7 +189,8 @@ PROTOCOL = """
   `Result: complete`, `Result: incomplete`, `Major issue: yes`, `Major issue: no`.
 - If a missing decision blocks you, stop and write the report with `Result: incomplete`.
 - Never approve permission dialogs on your own; wait for a person.
-{notify_rule}"""
+- When the report is written, stop. The owner watches your terminal; no message is needed.
+"""
 
 
 def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, base="HEAD", report=None):
@@ -221,10 +222,9 @@ def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, b
     contract = runtime(cfg) / "tasks" / f"{tid}.md"
     contract.write_text(body + PROTOCOL.format(
         id=tid, role=role, cwd=cwd, report=report,
-        commit_rule=(f"- Commit your work on branch `{branch}` (already checked out). "
-                     f"Leave the tree clean.\n") if branch else "",
-        notify_rule=(f"- When finished or blocked, run: `hc send {parent} \"orch:{tid} done {report}\"` "
-                     f"(or `blocked` with one line why).\n") if parent else ""))
+        commit_rule=(f"- You are on branch `{branch}`. Do not run git commit: sandboxes often protect `.git`. "
+                     f"Leave changes in the tree; the owner commits them after reading your report.\n")
+        if branch else ""))
 
     argv = list(a["command"])
     if use_wt:
@@ -329,18 +329,25 @@ def collect(cfg, tid, keep_worker=False):
             live = False
         if live:
             return {"task": tid, "state": "running", "why": "worker still live, no report yet", "evidence": ev}
-    # Reports written inside a worktree must survive its removal.
-    root_report = cfg["root"] / "docs" / "orch" / f"{tid}.md"
-    if Path(t["report"]).exists() and Path(t["report"]) != root_report:
-        root_report.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(t["report"], root_report)
-        t["report_copy"] = str(root_report)
+    # Keep a copy outside the worktree: it survives an abandoned worktree.
+    backup = runtime(cfg) / "reports" / f"{tid}.md"
+    if Path(t["report"]).exists():
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(t["report"], backup)
+    # Workers do not commit (sandboxed .git); commit their tree once the report
+    # says the work is complete. Report travels with the branch.
+    if t.get("branch") and Path(t["cwd"]).exists() and ev["sentinel"] in OK_SENTINELS:
+        if git(cfg, "status", "--porcelain", cwd=t["cwd"]):
+            git(cfg, "add", "-A", cwd=t["cwd"])
+            git(cfg, "commit", "-q", "-m", f"orch({tid}): {t['role']} by {t['agent']}", cwd=t["cwd"])
+            ev = evidence(cfg, t)
+            state, why = verdict(t, ev)
     if not keep_worker:
         hc.kill(t["name"])
         hc.rm(t["name"])
     t.update(state=state, verdict=why, evidence=ev, finished_at=time.time())
     save_task(cfg, t)
-    return {"task": tid, "state": state, "why": why, "evidence": ev, "report": t.get("report_copy") or t["report"]}
+    return {"task": tid, "state": state, "why": why, "evidence": ev, "report": t["report"], "backup": str(backup)}
 
 
 def refresh(cfg, terminals=None):
