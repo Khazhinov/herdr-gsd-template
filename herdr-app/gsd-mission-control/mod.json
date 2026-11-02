@@ -1,0 +1,4 @@
+{
+  "place": "none",
+  "overlay": { "kind": "window", "key": "gsd-mission-control", "keep": true, "width": 460, "height": 0.85 }
+}

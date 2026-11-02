@@ -9,6 +9,7 @@
   collect ID [--keep-worker]        judge durable evidence, stop the worker
   status [--json]                   tasks, quotas, routing
   watch                             live dashboard + publisher (run in a Herdr pane)
+  hub start|stop                    run `watch` in its own herdr-core terminal
   worktree create|merge|remove|path ID
   statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
   gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
@@ -290,10 +291,13 @@ def cmd_watch(cfg, a):
     dirty = threading.Event()
     dirty.set()
 
+    relevant = {"created", "lost", "restarted", "finished", "removed", "status", "turn", "labels"}
+
     def on_event(msg):
         p = msg.get("params") or {}
-        if msg.get("method") == "event" and p.get("terminal") == hub:
-            return  # our own label updates
+        # Our own doc writes and label updates would otherwise wake us forever.
+        if msg.get("method") != "event" or p.get("type") not in relevant or p.get("terminal") == hub:
+            return
         dirty.set()
 
     rpc = None
@@ -332,6 +336,34 @@ def cmd_watch(cfg, a):
             return 0
         if rpc and rpc.closed.is_set():
             rpc = None
+
+
+def cmd_hub(cfg, a):
+    """Run `watch` in its own herdr-core terminal: the publisher that feeds the
+    Herdr App mod. It outlives the owner session and appears in the owner's space."""
+    name = f"orch-{config.project_name(cfg)}"[:32]
+    live = [t for t in hc.ls() if t.get("name") == name]
+    if a.op == "stop":
+        for t in live:
+            hc.kill(t["address"])
+            hc.rm(t["address"])
+        print(f"{name} stopped" if live else f"{name} not running")
+        return 0
+    if live:
+        print(f"{name} already running as {live[0]['address']}")
+        return 0
+    labels = {"orch.project": config.project_name(cfg)}
+    me = os.environ.get("HC_TERMINAL_ID")
+    if me and cfg["routing"].get("workers", {}).get("show_in_app", True):
+        space = (hc.get(me).get("labels") or {}).get("herdr.space")
+        if space:
+            labels["herdr.space"] = space
+    keep = cfg["routing"].get("workers", {}).get("pass_env", tasks.DEFAULT_PASS_ENV)
+    argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ],
+            sys.executable, str(Path(__file__).resolve()), "--root", str(cfg["root"]), "watch"]
+    r = hc.run(argv, name, cfg["root"], labels, no_parent=True)
+    print(f"{name} started as {r.get('address') if isinstance(r, dict) else r}")
+    return 0
 
 
 # ---------------------------------------------------------------- main
@@ -377,6 +409,8 @@ def main(argv=None):
     s.add_argument("--interval", type=int)
     s.add_argument("--once", action="store_true")
     s.add_argument("--quiet", action="store_true")
+    s = p("hub")
+    s.add_argument("op", choices=["start", "stop"])
     s = p("worktree")
     s.add_argument("op", choices=["create", "merge", "remove", "path"])
     s.add_argument("id")
