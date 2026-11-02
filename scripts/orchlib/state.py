@@ -82,6 +82,11 @@ def _first_line(text, n=140):
     return text.strip().splitlines()[0][:n] if isinstance(text, str) and text.strip() else None
 
 
+def _phase_key(n):
+    """GSD writes phase dirs zero-padded ("01", "03.1"), ROADMAP numbers are not ("1")."""
+    return re.sub(r"^0+(?=\d)", "", str(n))
+
+
 def summarize(d, roadmap=None):
     planned = {}
     for ph in d.get("phases", []):
@@ -109,7 +114,7 @@ def summarize(d, roadmap=None):
                     ],
                 }
             )
-        planned[str(ph.get("phase_id"))] = {
+        planned[_phase_key(ph.get("phase_id"))] = {
             "dir": ph.get("dir"),
             "complete": ph.get("complete"),
             "goal": _v(ph.get("goal")),
@@ -119,7 +124,7 @@ def summarize(d, roadmap=None):
     phases = []
     for rp in (roadmap or {}).get("phases", []):
         num = str(rp.get("number"))
-        ph = planned.pop(num, {})
+        ph = planned.pop(_phase_key(num), {})
         phases.append(
             {
                 "id": num,

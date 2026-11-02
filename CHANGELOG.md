@@ -5,6 +5,7 @@
 - Mission Control offers a hub restart button.
 - Advice commands copy to the clipboard on click.
 - Documentation is in English; Russian copies live next to it as `*.ru.md`.
+- Mission Control no longer lists phases below 10 twice (GSD pads phase dirs, ROADMAP does not).
 - Owner handoff advice shows a conditional warning when the last low quota reading is stale but its window has not reset.
 - Offline lifecycle tests no longer depend on Claude or Codex CLI being installed on the runner.
 

@@ -16,7 +16,7 @@ from unittest import mock
 
 SRC = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SRC / "scripts"))
-from orchlib import config, hc, quota, route, tasks  # noqa: E402
+from orchlib import config, hc, quota, route, state, tasks  # noqa: E402
 
 NOW = 1_800_000_000.0
 
@@ -606,6 +606,16 @@ class Lifecycle(unittest.TestCase):
                  "started_at": 1, "state": "starting"}]
             tasks.save_ledger(data)
         self.assertEqual(tasks.running_counts(c), {})
+
+
+class Planning(unittest.TestCase):
+    def test_padded_phase_dirs_merge_with_roadmap_numbers(self):
+        inspect = {"phases": [{"phase_id": "01", "plans": [{"id": "01-01", "hasSummary": True}]},
+                              {"phase_id": "03.1", "plans": []}]}
+        roadmap = {"phases": [{"number": "1", "name": "Core"}, {"number": "3.1", "name": "Fix"}]}
+        phases = state.summarize(inspect, roadmap)["phases"]
+        self.assertEqual([p["id"] for p in phases], ["1", "3.1"])
+        self.assertEqual(len(phases[0]["plans"]), 1)
 
 
 class ShellChecks(unittest.TestCase):
