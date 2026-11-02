@@ -25,6 +25,17 @@ pat = re.compile(r"<!-- GSD-HERDR-STARTER:BEGIN -->.*?<!-- GSD-HERDR-STARTER:END
 text = pat.sub(lambda _m: block, text) if pat.search(text) else text.rstrip() + ("\n\n" if text.strip() else "") + block + "\n"
 claude.write_text(text)
 
+settings = root / ".claude/settings.json"
+data = json.loads(settings.read_text()) if settings.exists() and settings.read_text().strip() else {}
+tap = 'python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/orch.py" statusline-tap'
+cur = (data.get("statusLine") or {}).get("command", "")
+if "statusline-tap" not in cur:
+    # Chain an existing project statusline after the tap; empty chain means
+    # the tap runs the user's global statusline itself.
+    cmd = tap + (" -- " + shlex.quote(cur) if cur else "")
+    data["statusLine"] = {"type": "command", "command": cmd}
+    settings.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
 codex = root / ".codex/config.toml"
 codex.parent.mkdir(parents=True, exist_ok=True)
 begin, end = "# GSD-HERDR-PEER-CONFIG:BEGIN", "# GSD-HERDR-PEER-CONFIG:END"
@@ -49,16 +60,5 @@ else:
         raise SystemExit(3)
     text = re.sub(re.escape(begin) + r".*?" + re.escape(end), lambda _m: managed, text, flags=re.S)
     codex.write_text(text.rstrip() + "\n")
-
-settings = root / ".claude/settings.json"
-data = json.loads(settings.read_text()) if settings.exists() and settings.read_text().strip() else {}
-tap = 'python3 "${CLAUDE_PROJECT_DIR:-.}/scripts/orch.py" statusline-tap'
-cur = (data.get("statusLine") or {}).get("command", "")
-if "statusline-tap" not in cur:
-    # Chain an existing project statusline after the tap; empty chain means
-    # the tap runs the user's global statusline itself.
-    cmd = tap + (" -- " + shlex.quote(cur) if cur else "")
-    data["statusLine"] = {"type": "command", "command": cmd}
-    settings.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 print("runtime config reconciled")
