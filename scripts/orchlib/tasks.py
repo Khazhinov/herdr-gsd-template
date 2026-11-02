@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import time
 from pathlib import Path
@@ -101,12 +102,45 @@ def running_counts(cfg):
     return n
 
 
+def costs(cfg):
+    """Measured quota spend per "<account>/<weight>": median of the last 5 tasks
+    that ran alone on their account (overlapping tasks blur each other's spend)."""
+    samples = {}
+    for t in sorted(all_tasks(cfg), key=lambda t: t.get("finished_at") or 0):
+        if t.get("quota_burn") is not None and not t.get("quota_shared"):
+            samples.setdefault(f"{quota.account(cfg, t['agent'])}/{t.get('weight')}", []).append(t["quota_burn"])
+    return {k: round(statistics.median(v[-5:]), 1) for k, v in samples.items()}
+
+
+def pending(cfg, quotas, measured):
+    """Per account: spend still expected from running tasks (estimate minus
+    what the window already lost since each task started)."""
+    out = {}
+    for t in all_tasks(cfg):
+        if t.get("state") != "running" or t.get("agent") not in cfg["agents"]:
+            continue
+        est = route.cost(cfg, measured, t["agent"], t.get("weight", "heavy"))
+        q = quotas.get(t["agent"])
+        spent = (t["quota_start"] - q["effective_remaining_percent"]) if (
+            quota.known(q) and t.get("quota_start") is not None) else 0
+        acct = quota.account(cfg, t["agent"])
+        out[acct] = out.get(acct, 0) + max(0.0, est - max(0.0, spent))
+    return out
+
+
+def decide(cfg, role, quotas=None, **kw):
+    """route.decide with live running counts, installed CLIs and quota costs."""
+    quotas = quotas or quota.all_quotas(cfg)
+    measured = costs(cfg)
+    return route.decide(cfg, role, quotas, running_counts(cfg), installed=installed(cfg),
+                        costs=measured, pending=pending(cfg, quotas, measured), **kw)
+
+
 def preview(cfg, quotas=None):
     """What each role would get right now (dashboard, `orch.py route`)."""
     quotas = quotas or quota.all_quotas(cfg)
-    inst, run, ov = installed(cfg), running_counts(cfg), override_get(cfg)
-    return {role: route.decide(cfg, role, quotas, run, override=ov.get(role), installed=inst)
-            for role in cfg["routing"].get("roles", {})}
+    ov = override_get(cfg)
+    return {role: decide(cfg, role, quotas, override=ov.get(role)) for role in cfg["routing"].get("roles", {})}
 
 
 # ---------------------------------------------------------------- worktrees
@@ -201,8 +235,7 @@ def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, b
     body = Path(task_file).read_text()
     quotas = quota.all_quotas(cfg)
     ov = override_get(cfg).get(role)
-    d = route.decide(cfg, role, quotas, running_counts(cfg), heavy=heavy,
-                     override=agent or ov, installed=installed(cfg))
+    d = decide(cfg, role, quotas, heavy=heavy, override=agent or ov)
     if agent and d["selected"] != agent:
         raise SystemExit(f"requested agent {agent} is not eligible: {d['reason']}")
     log_decision(cfg, d, tid)
@@ -259,9 +292,36 @@ def dispatch(cfg, task_file, role, tid, agent=None, heavy=None, worktree=None, b
          "startup": startup,
          "name": name, "cwd": str(cwd), "branch": branch, "base": base_commit, "report": str(report),
          "contract": str(contract), "parent": parent, "state": "running", "started_at": time.time(),
-         "independent": d["independent"], "reason": d["reason"]}
+         "independent": d["independent"], "reason": d["reason"]} | quota_mark(quotas.get(aid))
     save_task(cfg, t)
     return t
+
+
+def quota_mark(q):
+    """Gating remaining percent and the earliest reset among gating windows."""
+    if not quota.known(q):
+        return {"quota_start": None, "quota_reset_at": None}
+    names = (q.get("extra") or {}).get("gating_windows")
+    resets = [w.get("resets_at") for w in q["windows"] if (not names or w["name"] in names) and w.get("resets_at")]
+    return {"quota_start": q["effective_remaining_percent"], "quota_reset_at": min(resets) if resets else None}
+
+
+def quota_burn(cfg, t, now):
+    """What the task's account lost while it ran; None when unmeasurable
+    (no reading, or a gating window reset in between)."""
+    if t.get("quota_start") is None or (t.get("quota_reset_at") and t["quota_reset_at"] <= now):
+        return None
+    q = quota.all_quotas(cfg, max_age=0).get(t["agent"])
+    if not quota.known(q):
+        return None
+    return round(max(0.0, t["quota_start"] - q["effective_remaining_percent"]), 1)
+
+
+def overlapped(cfg, t, now):
+    acct = quota.account(cfg, t["agent"])
+    return any(o["id"] != t["id"] and o.get("agent") in cfg["agents"] and quota.account(cfg, o["agent"]) == acct
+               and (o.get("started_at") or 0) < now and (o.get("finished_at") or now) > t.get("started_at", now)
+               for o in all_tasks(cfg))
 
 
 def startup_check(name, seconds=25):
@@ -345,7 +405,10 @@ def collect(cfg, tid, keep_worker=False):
     if not keep_worker:
         hc.kill(t["name"])
         hc.rm(t["name"])
-    t.update(state=state, verdict=why, evidence=ev, finished_at=time.time())
+    now = time.time()
+    if t.get("agent") in cfg["agents"]:
+        t.update(quota_burn=quota_burn(cfg, t, now), quota_shared=overlapped(cfg, t, now))
+    t.update(state=state, verdict=why, evidence=ev, finished_at=now)
     save_task(cfg, t)
     return {"task": tid, "state": state, "why": why, "evidence": ev, "report": t["report"], "backup": str(backup)}
 

@@ -18,6 +18,10 @@ It owns routing, quotas, worker lifecycle and evidence. Do not start agents with
   independence, `unknown` quota fails closed for heavy work. The reason is recorded in
   `.orchestration/runtime/decisions.jsonl`.
 - A running task is never migrated when a quota crosses a reserve.
+- The reserve must survive the task: routing subtracts the measured cost of one task
+  (`quota_burn` recorded by `collect`, median of solo runs) and the cost still ahead of
+  running tasks on the same account. Parallel heavy tasks on one account are admitted
+  only while the projection stays above the reserve.
 - Worker terminal status (`working`, `blocked`, `done`, `idle`) is runtime information only.
   Task success = report sentinel + (execute) commits on a clean worktree branch.
 

@@ -41,6 +41,10 @@ heavy = true
 
 # Percent of the most depleted quota window below which an agent stops
 # receiving new work of that weight. Running tasks are never migrated.
+# The check uses the projection after the task: remaining - spend still ahead
+# of running tasks on the same account - this task's cost. The cost is measured
+# by `collect` (median of the last 5 tasks that ran alone on the account);
+# until then <weight>_cost_percent applies (default 0).
 [reserves.codex]
 heavy_stop_percent = 30
 light_stop_percent = 10

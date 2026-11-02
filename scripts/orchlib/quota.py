@@ -210,6 +210,12 @@ def probe_static(agent, spec, now):
 
 # ---------------------------------------------------------------- facade
 
+def account(cfg, aid):
+    """Agents that draw on one quota (variants of one CLI) share this key."""
+    kind = cfg["agents"][aid].get("quota", "none")
+    return kind if kind in ("codex", "claude") else aid
+
+
 def probe(cfg, aid, now=None, shared=None):
     """One reading per probe kind: agent variants (e.g. two Codex models on one
     account) share the account's quota. `shared` caches readings within a call."""

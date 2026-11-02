@@ -335,6 +335,9 @@ export default class MissionControl extends View {
           .child(div().w(34).child(`${Math.round(pct)}%`))
           .child(div().w(110).text_color(t.muted).text_size(11).child(this.resetAt(w.resets_at))));
       }
+      const cost = Object.entries(q.task_cost || {}).filter(([, v]) => v != null).map(([k, v]) => `${k} ≈${Math.round(v)}%`);
+      if (cost.length) out.push(div().pl(30).text_size(10.5).text_color(t.dim)
+        .tooltip("Median quota spend of one task that ran alone; routing keeps the reserve after it").child(`per task: ${cost.join(" · ")}`));
       if (!q.available) out.push(div().text_color(t.dim).truncate().child((q.extra && q.extra.reason) || "no quota source"));
     }
     return out;

@@ -110,7 +110,7 @@ def summarize(d, roadmap=None):
             "phases": phases}
 
 
-def providers(cfg, quotas, now):
+def providers(cfg, quotas, now, costs=None):
     """Quota per agent environment (one account per probe kind), not per
     model variant: variants of one CLI share the same windows."""
     out = {}
@@ -118,11 +118,13 @@ def providers(cfg, quotas, now):
         kind = a.get("quota", "none")
         if kind == "none" or aid not in quotas:
             continue
-        key = kind if kind in ("codex", "claude") else aid
+        key = quota.account(cfg, aid)
         q = quotas[aid]
         if key not in out:
             out[key] = {k: q.get(k) for k in ("available", "confidence", "stale", "windows", "observed_at", "extra")}
             out[key]["agents"] = []
+            # Measured spend of one task on this account (see tasks.costs).
+            out[key]["task_cost"] = {w: (costs or {}).get(f"{key}/{w}") for w in ("heavy", "light")}
         out[key]["agents"].append(aid)
     return out
 
@@ -143,7 +145,7 @@ def compose(cfg, quotas=None, with_planning=True, terminals=None):
             "quotas": {a: {k: q.get(k) for k in ("available", "confidence", "stale", "windows",
                                                  "effective_remaining_percent", "observed_at", "extra", "source")}
                        | {"headroom": quota.headroom(q, now)} for a, q in quotas.items()},
-            "providers": providers(cfg, quotas, now),
+            "providers": providers(cfg, quotas, now, tasks.costs(cfg)),
             "routing": {role: {k: d[k] for k in ("selected", "weight", "strategy", "independent", "reason")}
                         for role, d in tasks.preview(cfg, quotas).items()},
             "override": tasks.override_get(cfg),

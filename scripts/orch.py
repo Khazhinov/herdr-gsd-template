@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from orchlib import config, hc, quota, route, state, tasks  # noqa: E402
+from orchlib import config, hc, quota, state, tasks  # noqa: E402
 
 
 def out(obj, as_json):
@@ -70,8 +70,7 @@ def cmd_quota(cfg, a):
 
 def cmd_route(cfg, a):
     heavy = True if a.heavy else (False if a.light else None)
-    d = route.decide(cfg, a.role, quota.all_quotas(cfg), tasks.running_counts(cfg), heavy=heavy,
-                     override=tasks.override_get(cfg).get(a.role), installed=tasks.installed(cfg))
+    d = tasks.decide(cfg, a.role, heavy=heavy, override=tasks.override_get(cfg).get(a.role))
     if not out(d, a.json):
         print(d["selected"] or "NONE")
         print(d["reason"])

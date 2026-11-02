@@ -42,6 +42,22 @@ class Routing(unittest.TestCase):
         self.assertEqual(d["selected"], "codex")
         self.assertIn("quota 70% > heavy reserve 30%", d["reason"])
 
+    def test_reserve_must_survive_the_task(self):
+        # Field case: 36% left, a heavy plan costs ~35%.
+        qs = {"codex": q("codex", 36), "claude": q("claude", 80)}
+        d = self.decide("execute", qs, costs={"codex/heavy": 35})
+        self.assertEqual(d["selected"], "claude")
+        self.assertIn("quota 36% - 35% this task = 1% <= heavy reserve 30%", d["reason"])
+        # Field case: a second parallel heavy task sees the first one's spend.
+        d = self.decide("execute", {"codex": q("codex", 77), "claude": q("claude", 80)},
+                        costs={"codex/heavy": 35}, pending={"codex": 35})
+        self.assertEqual(d["selected"], "claude")
+        self.assertIn("- 35% running", d["reason"])
+
+    def test_cost_is_capped_so_a_full_window_admits_one_task(self):
+        d = self.decide("execute", {"codex": q("codex", 100), "claude": q("claude", 80)}, costs={"codex/heavy": 90})
+        self.assertEqual(d["selected"], "codex")
+
     def test_codex_reserve_falls_back_to_claude(self):
         d = self.decide("execute", {"codex": q("codex", 25), "claude": q("claude", 80)})
         self.assertEqual(d["selected"], "claude")
@@ -308,6 +324,24 @@ class Lifecycle(unittest.TestCase):
         self.assertTrue((self.repo / "feature.txt").exists())
         self.assertTrue((self.repo / "docs/orch/p1-exec.md").exists())
         self.assertFalse(wt.exists())
+
+    def test_quota_burn_is_measured_per_task(self):
+        rc, out = self.run_orch("dispatch", self.task(), "--role", "execute", "--id", "b1", "--json")
+        t = json.loads(out)
+        self.assertEqual(t["quota_start"], 80)
+        (self.repo / ".orchestration/agents.local.toml").write_text(
+            '[agents.codex]\nquota = "static"\nquota_static = {remaining_percent = 62}\n'
+            '[agents.claude]\nquota = "static"\nquota_static = {remaining_percent = 90}\n')
+        Path(t["report"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(t["report"]).write_text("# Report\n\nResult: complete\n")
+        self.run_orch("collect", "b1")
+        from orchlib import tasks
+        c = config.load(self.repo)
+        done = tasks.load_task(c, "b1")
+        self.assertEqual((done["quota_burn"], done["quota_shared"]), (18.0, False))
+        self.assertEqual(tasks.costs(c), {"codex/heavy": 18.0})
+        rc, out = self.run_orch("route", "execute", "--json")
+        self.assertIn("quota 62% - 18% this task = 44% > heavy reserve 30%", json.loads(out)["reason"])
 
     def test_report_is_committed_with_branch(self):
         rc, out = self.run_orch("dispatch", self.task(), "--role", "execute", "--id", "p2", "--json")

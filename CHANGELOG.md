@@ -2,6 +2,11 @@
 
 ## 0.2.0 - 2026-11-02
 
+- Quota-aware admission: the reserve is checked against the projection after the task
+  (measured per-task spend, spend still ahead of running tasks on the same account).
+  `collect` records `quota_burn`; Mission Control shows the per-task cost under Limits.
+- Task contract gains "Quota discipline": one long call instead of polling `ps`/`tail`.
+
 - Execution substrate moved from the legacy Herdr TUI to herdr-core (`hc`); Herdr App is the optional UI.
 - Agent registry (`.orchestration/agents.toml`) and routing policy (`routing.toml`) replace hard-coded Claude/Codex peers.
 - Deterministic scheduler with recorded reasons: capability, live quota, reserves, review independence,
