@@ -142,6 +142,20 @@ export default class MissionControl extends View {
     });
   }
 
+  // Mods have no clipboard API; the app runs on Windows, so PowerShell sets it.
+  // Single-quoted PowerShell strings only need ' doubled.
+  copy(text, cx) {
+    cx.spawn(async () => {
+      try {
+        const r = await exec("powershell", ["-NoProfile", "-Command", `Set-Clipboard -Value '${text.replace(/'/g, "''")}'`]);
+        if (r.code !== 0) throw new Error(r.stderr || r.stdout);
+        notify({ title: "Copied", body: text, level: "success" });
+      } catch (e) {
+        notify({ title: "Copy failed", body: String(e).slice(-300), level: "error" });
+      }
+    });
+  }
+
   // ---------------------------------------------------------------- view
 
   render(cx) {
@@ -208,12 +222,12 @@ export default class MissionControl extends View {
   adviceRow(x, i, t) {
     const color = x.level === "act" ? t.blocked : x.level === "warn" ? t.ansi3 : t.muted;
     return h_flex().id(`adv-${i}`).items_start().gap(6)
-      .when(Boolean(x.command), (el) => el.tooltip(x.command))
       .child(div().pt(4).child(this.dot(color, 6)))
       .child(v_flex().flex_1().min_w_0().gap(4)
         .child(div().min_w_0().whitespace_normal().text_color(x.level === "info" ? t.muted : t.foreground).child(x.text))
-        .when(Boolean(x.command), (el) => el.child(div().min_w_0().whitespace_normal().px(6).py(3)
-          .rounded(4).bg(t.surface).text_size(10.5).text_color(t.muted).child(x.command))));
+        .when(Boolean(x.command), (el) => el.child(div().id(`adv-cmd-${i}`).min_w_0().whitespace_normal().px(6).py(3)
+          .rounded(4).bg(t.surface).text_size(10.5).text_color(t.muted).hover((h) => h.bg(t.hover))
+          .tooltip("Click to copy").on_click((_e, cx) => this.copy(x.command, cx)).child(x.command))));
   }
 
   section(title, t, badge, children) {
