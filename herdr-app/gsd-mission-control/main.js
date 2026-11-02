@@ -143,7 +143,7 @@ export default class MissionControl extends View {
       const live = hub.labels[`orch.q.${agent}`];
       const row = v_flex().gap(2);
       const head = h_flex().gap(8).items_center()
-        .child(div().w(60).font_semibold().child(agent))
+        .child(div().w(110).font_semibold().truncate().child(agent))
         .child(div().text_color(t.dim).child(q.available ? `${q.confidence}${q.stale ? " · STALE" : ""}` : "unknown"));
       if (s.routing.execute?.selected !== agent && q.available && !q.stale) {
         head.child(this.button(`prefer-${agent}`, "use for next execute", t,
