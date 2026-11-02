@@ -1,78 +1,80 @@
-# Архитектура v0.2
+# Architecture v0.2
 
-## 1. Слои и владельцы ответственности
+English | [Русский](ARCHITECTURE.ru.md)
 
-| Слой | Ответственность | Чего не делает |
+## 1. Layers and responsibilities
+
+| Layer | Responsibility | Does not |
 |---|---|---|
-| GSD Core | жизненный цикл проекта, `.planning/`, верификатор, `planning.inspect` | не выбирает провайдера и не учитывает квоты |
-| `scripts/orch.py` (планировщик) | реестр агентов, квоты, маршрутизация, контракт задачи, worktree, доказательства | не хранит состояние проекта вне файлов и Git |
-| herdr-core (`hc`) | процессы в живущих терминалах, родитель-потомок, OSC 7501, события, документы, машины | не судит об успехе задачи |
-| Herdr App | интерфейс: пространства, вкладки воркеров, Mission Control | не содержит бизнес-логики маршрутизации |
-| Git | доказательства исполнения | - |
+| GSD Core | project lifecycle, `.planning/`, verifier, `planning.inspect` | pick a provider or track quotas |
+| `scripts/orch.py` (scheduler) | agent registry, quotas, routing, task contract, worktrees, evidence | keep project state outside files and Git |
+| herdr-core (`hc`) | processes in long-lived terminals, parent-child links, OSC 7501, events, documents, machines | judge task success |
+| Herdr App | interface: spaces, worker tabs, Mission Control | hold routing business logic |
+| Git | execution evidence | - |
 
-## 2. Компоненты планировщика
+## 2. Scheduler components
 
-| Модуль | Назначение |
+| Module | Purpose |
 |---|---|
-| `orchlib/config.py` | загрузка и проверка `agents.toml`, `routing.toml` и локальных переопределений `*.local.toml` |
-| `orchlib/quota.py` | нормализованные квоты: Codex RPC, журналы Codex, снимок statusline Claude, статический бюджет, `unknown`; общий кэш на учётную запись (`~/.cache/herdr-orch/quotas.json`) |
-| `orchlib/route.py` | чистая детерминированная функция выбора с причиной; не содержит идентификаторов агентов |
-| `orchlib/tasks.py` | запуск воркера через `hc run`, протокол задачи, worktree, проверка доказательств, `collect` |
-| `orchlib/state.py` | снимок для дашбордов: маршруты, квоты, задачи, tool-агенты, `planning.inspect` |
-| `orchlib/hc.py` | вызовы CLI `hc` и JSON-RPC через `hc connect` |
+| `orchlib/config.py` | loads and validates `agents.toml`, `routing.toml` and the local `*.local.toml` overrides |
+| `orchlib/quota.py` | normalized quotas: Codex RPC, Codex logs, Claude statusline snapshot, static budget, `unknown`; one shared cache per account (`~/.cache/herdr-orch/quotas.json`) |
+| `orchlib/route.py` | pure deterministic selection function with a reason; contains no agent identifiers |
+| `orchlib/tasks.py` | starts a worker with `hc run`, task protocol, worktree, evidence check, `collect` |
+| `orchlib/state.py` | dashboard snapshot: routes, quotas, tasks, tool agents, `planning.inspect` |
+| `orchlib/hc.py` | `hc` CLI calls and JSON-RPC over `hc connect` |
 
-Маршрутизация сначала читает исходную квоту учётной записи из общего `quotas.json`, затем применяет
-`quota_windows` проекта. Для каждого выбранного окна прогноз равен остатку минус ожидаемый расход
-активных задач из общего `ledger.json` минус оценка новой задачи. Допуск под `admission.lock` записывает
-задачу в состоянии `starting` до запуска терминала. Лимит `max_parallel` агента и необязательный
-`[accounts.<account>] max_parallel` проверяются в той же блокировке. Образцы расхода хранятся по
-учётной записи, весу и окну; для оценки используется медиана последних пяти одиночных задач.
+Routing first reads the raw account quota from the shared `quotas.json`, then applies the project's
+`quota_windows`. For each selected window the projection is the remaining percent minus the expected
+spend of active tasks from the shared `ledger.json` minus the estimate for the new task. Admission under
+`admission.lock` records the task as `starting` before the terminal starts. The agent's `max_parallel`
+and the optional `[accounts.<account>] max_parallel` are checked under the same lock. Spend samples are
+stored per account, weight and window; the estimate is the median of the last five solo tasks.
 
-Для воркера на учётной записи владельца к порогу добавляется `owner_reserve_percent`. При ревью
-`dispatch --of <id>` исключает учётную запись автора; ручной выбор этой записи получает
-`independent: false`. Сброшенное окно без нового наблюдения остаётся неизвестным.
+A worker on the owner's account adds `owner_reserve_percent` to the threshold. For a review,
+`dispatch --of <id>` excludes the author's account; picking that account manually gives
+`independent: false`. A window that has reset with no new reading stays unknown.
 
-## 3. Жизненный цикл задачи
+## 3. Task lifecycle
 
 ```text
 route(role, weight) -> decision + reason -> runtime/decisions.jsonl
-  -> execute: git worktree .orchestration/worktrees/<id>, ветка orch/<id>
-  -> контракт runtime/tasks/<id>.md = задача владельца + протокол
+  -> execute: git worktree .orchestration/worktrees/<id>, branch orch/<id>
+  -> contract runtime/tasks/<id>.md = owner's task + protocol
   -> hc run --bg --name w-<id> --cwd <dir> --label orch.* [--outlive-parent] -- env PATH=... <agent argv> "<prompt>"
-  -> startup_check: агент сообщил статус OSC 7501, иначе диагностика (диалог доверия, вход)
-  -> воркер пишет отчёт; хост узнаёт о событии через hc wait --children
-  -> collect: маркер отчёта, проверка .planning/, остановка терминала, коммит изменений worktree, копия отчёта, удаление записи ledger
-  -> merge: проверка задачи и конфликтов до удаления worktree, отказ при изменении .planning/
+  -> startup_check: the agent reported an OSC 7501 status, otherwise diagnostics (trust dialog, login)
+  -> the worker writes a report; the host learns about the event with hc wait --children
+  -> collect: report marker, .planning/ check, terminal stop, commit of worktree changes, report copy, ledger entry removal
+  -> merge: task and conflict checks before the worktree is removed, refusal if .planning/ changed
 ```
 
-Воркер не коммитит сам: песочница Codex защищает `.git` даже при `--add-dir`, а вызов `hc send` из песочницы
-требует подтверждения (сокет ядра вне записываемых путей). Поэтому завершение определяется через `hc wait`
-и отчёт, а коммит выполняет владелец в `collect`.
+The worker does not commit: the Codex sandbox protects `.git` even with `--add-dir`, and calling `hc send`
+from the sandbox needs approval (the core socket is outside the writable paths). So completion is detected
+with `hc wait` and the report, and the owner commits in `collect`.
 
-## 4. Окружение воркеров
+## 4. Worker environment
 
-herdr-core запускает программы с окружением ядра, а не вызывающего терминала. При запуске ядра из Herdr App
-по SSH в нём обычно нет `~/.local/bin` и прокси. Поэтому argv воркера начинается с `env` и переменных из
-`[workers] pass_env`.
+herdr-core starts programs with the core's environment, not the calling terminal's. When Herdr App starts
+the core over SSH, it usually has no `~/.local/bin` and no proxy. So the worker argv starts with `env` and the
+variables from `[workers] pass_env`.
 
-Worktree по умолчанию размещаются внутри репозитория (`.orchestration/worktrees/`): Claude наследует доверие
-к папке от корня проекта. Codex доверяет по корню Git, поэтому для worktree передаётся
-`-c projects."<worktree>".trust_level="trusted"`. Доверие к самому корню проекта остаётся решением человека.
+Worktrees live inside the repository by default (`.orchestration/worktrees/`): Claude inherits folder trust
+from the project root. Codex trusts by Git root, so a worktree gets
+`-c projects."<worktree>".trust_level="trusted"`. Trusting the project root itself stays a human decision.
 
-## 5. Публикация состояния
+## 5. State publishing
 
-`orch.py watch` (через `orch.py hub start` - в отдельном терминале hc) пересобирает снимок при каждом
-значимом событии ядра (`events.subscribe`) и по таймеру квот. Снимок публикуется:
+`orch.py watch` (started by `orch.py hub start` in its own hc terminal) rebuilds the snapshot on every
+significant core event (`events.subscribe`) and on the quota timer. The snapshot is published:
 
-- в файл `.orchestration/runtime/state.json`;
-- в документ ядра `orch-<project>` (`doc.set`, событие `doc` для подписчиков);
-- в метки терминала hub: `orch.rev`, `orch.q.<agent>`, `orch.route.<role>`.
+- to the file `.orchestration/runtime/state.json`;
+- to the core document `orch-<project>` (`doc.set`, a `doc` event for subscribers);
+- to the hub terminal labels: `orch.rev`, `orch.q.<agent>`, `orch.route.<role>`.
 
-Мод Herdr App перерисовывается при изменении меток, затем читает файл с машины hub (`readTextFile {on}`).
-Статусы воркеров мод берёт из `terminals()` напрямую.
+The Herdr App mod redraws when the labels change, then reads the file from the hub's machine (`readTextFile {on}`).
+The mod takes worker statuses straight from `terminals()`.
 
-## 6. Удалённые машины
+## 6. Remote machines
 
-Планировщик работает на машине владельца. Herdr App подключает её как SSH-машину; адреса терминалов
-в App получают префикс машины (`herdr-wsl/t7`), мод учитывает это при фокусе и остановке воркера.
-Запуск воркеров на других машинах (`hc run --on`) в v0.2 не реализован.
+The scheduler runs on the owner's machine. Herdr App connects it as an SSH machine; terminal addresses
+in the App get the machine prefix (`herdr-wsl/t7`), and the mod accounts for it when it focuses or stops a worker.
+Starting workers on other machines (`hc run --on`) is not implemented in v0.2.

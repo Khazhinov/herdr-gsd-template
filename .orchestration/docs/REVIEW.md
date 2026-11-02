@@ -1,25 +1,27 @@
-# Ревью и верификация в v0.2
+# Review and verification in v0.2
 
-## 1. Профили
+English | [Русский](REVIEW.ru.md)
 
-| Профиль | Ревью CONTEXT и PLAN | Ревью кода | Верификация |
+## 1. Profiles
+
+| Profile | CONTEXT and PLAN review | Code review | Verification |
 |---|---|---|---|
-| lean (по умолчанию) | независимый воркер `orch.py dispatch --role review` | независимый воркер по diff ветки | GSD verifier |
-| strict | то же + `/gsd-plan-review-convergence` | воркер + `/gsd-review` с `review.default_reviewers` | GSD verifier + человек |
+| lean (default) | independent worker `orch.py dispatch --role review` | independent worker on the branch diff | GSD verifier |
+| strict | the same + `/gsd-plan-review-convergence` | worker + `/gsd-review` with `review.default_reviewers` | GSD verifier + human |
 
-## 2. Почему встроенные линии GSD не основные
+## 2. Why the built-in GSD lanes are not the main path
 
-GSD 1.19 поддерживает линии ревьюеров (`codex`, `claude`, `kimi-code`, `opencode` и др.) и экземпляры
-`review.reviewer_instances`. Линия запускает CLI разово и не знает о квотах и резервах. Планировщик
-выбирает ревьюера с учётом квот и независимости и фиксирует причину. Поэтому линии GSD оставлены
-для профиля strict как подтверждение, а не как основной путь.
+GSD 1.19 supports reviewer lanes (`codex`, `claude`, `kimi-code`, `opencode` and others) and
+`review.reviewer_instances`. A lane calls a CLI once and knows nothing about quotas and reserves. The scheduler
+picks a reviewer with quotas and independence in mind and records the reason. So the GSD lanes are kept
+for the strict profile as a confirmation, not as the main path.
 
-## 3. Независимость
+## 3. Independence
 
-Роль `review` имеет `independent = true`: владелец выбирается только при отсутствии других подходящих агентов,
-и решение помечается `independent: false`. Такое ревью владелец записывает как неисполненное условие независимости.
+The `review` role has `independent = true`: the owner is picked only when no other suitable agent exists,
+and the decision is marked `independent: false`. The owner records such a review as an unmet independence condition.
 
-## 4. Цикл
+## 4. Cycle
 
-Одно независимое ревью, одна правка владельца, повторное ревью только изменённых областей.
-Перед повторным ревью воркер получает прежние находки и diff правки, а не весь контекст.
+One independent review, one owner fix, a repeat review only of the changed areas.
+Before the repeat review the worker gets the previous findings and the fix diff, not the whole context.
