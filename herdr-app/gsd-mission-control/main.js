@@ -90,11 +90,12 @@ export default class MissionControl extends View {
   currentHub() {
     const space = spaces().find((s) => s.active);
     if (!space) return null;
-    // A space with its own folder belongs to that folder's project, even when a
-    // tab in it works in another repository; otherwise the panes' folders decide.
+    // The panes' live folders decide. space.folder is only where the space was
+    // first opened (it does not follow a later `cd`), so it is a fallback for a
+    // space whose panes report no folder.
     const tabIds = new Set(space.tabs.map((t) => t.id));
-    const cwds = space.folder ? [space.folder]
-      : panes().filter((p) => tabIds.has(p.tab)).map((p) => p.cwd).filter(Boolean);
+    let cwds = panes().filter((p) => tabIds.has(p.tab)).map((p) => p.cwd).filter(Boolean);
+    if (!cwds.length && space.folder) cwds = [space.folder];
     return terminals().find((t) => {
       if (!(t.state === "live" && t.labels && t.labels["orch.hub"] && t.labels["orch.state"])) return false;
       if ((machineOf(t.address) || null) !== (space.machine || null)) return false;

@@ -84,6 +84,19 @@ class Advice(unittest.TestCase):
         r = advice.compute(self.cfg, {"claude": q("claude", 80)}, 0)
         self.assertEqual([i["kind"] for i in r["items"]], ["update"])
 
+    def test_claude_quota_merges_sessions(self):
+        def tap(sid, five_used, five_reset):
+            advice.record_session({"session_id": sid, "cwd": str(self.root), "rate_limits": {
+                "five_hour": {"used_percentage": five_used, "resets_at": five_reset},
+                "seven_day": {"used_percentage": 40, "resets_at": NOW + 86400}}})
+        # An idle session still shows its window from before the reset (95% used).
+        tap("idle", 95, NOW - 600)
+        tap("busy", 20, NOW + 4 * 3600)
+        tap("busy2", 27, NOW + 4 * 3600)
+        q = quota.probe_claude(NOW, 1800)
+        five = next(w for w in q["windows"] if w["name"] == "5h")
+        self.assertEqual(five["used_percent"], 27)
+
     def test_owner_set_requires_handoff(self):
         env = {**os.environ, "ORCH_CACHE_DIR": str(quota.CACHE_DIR), "ORCH_HC": "false"}
         cmd = [sys.executable, str(SRC / "scripts/orch.py"), "--root", str(self.root), "owner", "set", "codex"]

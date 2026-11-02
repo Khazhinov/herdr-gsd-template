@@ -234,12 +234,38 @@ def probe_codex(now, stale_after_s, rpc=codex_rpc, sessions_root=None):
 # ---------------------------------------------------------------- claude
 
 
+def merge_sessions(now, stale_after_s):
+    """Every Claude session taps its statusline. An idle session still renders
+    its last-known rate_limits, possibly from before a reset, so the newest tap
+    is not the newest reading. Per window: the latest resets_at is the current
+    window, and within one window usage only grows, so the highest used wins."""
+    best, seen = {}, None
+    for p in (CACHE_DIR / "owner-sessions").glob("*.json"):
+        try:
+            d = json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        rl = d.get("rate_limits")
+        if not isinstance(rl, dict) or now - d.get("observed_at", 0) > stale_after_s:
+            continue
+        seen = max(seen or 0, d["observed_at"])
+        for key, w in rl.items():
+            if not isinstance(w, dict) or w.get("used_percentage") is None:
+                continue
+            cur = best.get(key)
+            k = (w.get("resets_at") or 0, w["used_percentage"])
+            if cur is None or k > (cur.get("resets_at") or 0, cur["used_percentage"]):
+                best[key] = w
+    return {"observed_at": seen, "rate_limits": best} if best else None
+
+
 def probe_claude(now, stale_after_s, snapshot=None):
     """Read the snapshot written by `orch.py statusline-tap` from Claude Code's
     statusline input (rate_limits.five_hour / seven_day)."""
     snap = Path(snapshot or CLAUDE_SNAPSHOT)
+    merged = None if snapshot else merge_sessions(now, stale_after_s)
     try:
-        data = json.loads(snap.read_text())
+        data = merged or json.loads(snap.read_text())
     except (OSError, json.JSONDecodeError):
         return unknown(
             "claude",

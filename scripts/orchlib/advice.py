@@ -56,6 +56,7 @@ def record_session(data, now=None):
         "tokens": tokens,
         "window": cw.get("context_window_size"),
         "model": (data.get("model") or {}).get("id"),
+        "rate_limits": data.get("rate_limits"),
     }
     d = quota.CACHE_DIR / SESSIONS
     d.mkdir(parents=True, exist_ok=True)
