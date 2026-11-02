@@ -166,6 +166,8 @@ export default class MissionControl extends View {
     const p = s.planning && s.planning.available ? s.planning : null;
 
     root.child(this.header(s, p, hub, t));
+    const tips = (s.advice && s.advice.items) || [];
+    if (tips.length) root.child(this.section("Advice", t, null, tips.map((x, i) => this.adviceRow(x, i, t))));
     root.child(this.section("Active", t, running.length ? String(running.length) : null,
       running.length ? running.map((x) => this.workerCard(x, termByTask[x.id], m, t))
         : [div().text_color(t.dim).child("No workers running")]));
@@ -188,11 +190,24 @@ export default class MissionControl extends View {
       .child(h_flex().items_center().gap(6)
         .child(div().flex_1().font_semibold().text_size(13.5).truncate().child(s.project))
         .child(this.pill(`owner ${s.owner}`, t))
+        .when(Boolean(s.advice && s.advice.context && s.advice.context.tokens), (el) => el.child(
+          this.pill(`ctx ${Math.round(s.advice.context.tokens / 1000)}k`, t)))
         .child(div().id("hub").text_color(t.dim).text_size(11).tooltip("Peek at the hub terminal")
           .on_click(() => run("terminal.peek", { terminal: hub.address }))
           .child(`${span(Date.now() / 1000 - s.updated_at)} ago`)))
       .child(div().text_color(t.muted).truncate().child(sub))
       .when(Boolean(p && p.stopped_at), (el) => el.child(div().text_color(t.dim).truncate().child(`stopped at ${p.stopped_at}`)));
+  }
+
+  // Owner hygiene: compact/clear, owner handoff, template update. The person acts.
+  adviceRow(x, i, t) {
+    const color = x.level === "act" ? t.blocked : x.level === "warn" ? t.ansi3 : t.muted;
+    return h_flex().id(`adv-${i}`).items_start().gap(6)
+      .when(Boolean(x.command), (el) => el.tooltip(x.command))
+      .child(div().pt(4).child(this.dot(color, 6)))
+      .child(v_flex().flex_1().gap(1)
+        .child(div().text_color(x.level === "info" ? t.muted : t.foreground).child(x.text))
+        .when(Boolean(x.command), (el) => el.child(div().text_size(10.5).text_color(t.dim).truncate().child(x.command))));
   }
 
   section(title, t, badge, children) {

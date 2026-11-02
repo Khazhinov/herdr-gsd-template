@@ -6,6 +6,7 @@
 #   worktree_args  extra argv for runs inside a git worktree; {git_common_dir}
 #                  expands to the main repository's .git, {cwd} to the worktree
 #   capabilities   roles it may take: owner, plan, execute, review, research, debug
+#   compact_command, clear_command   the runtime commands quoted by `orch.py advice`
 #   cost_tier      cheap < standard < premium
 #   quota          probe id in scripts/orchlib/quota.py (codex, claude, static, none);
 #                  agents with the same probe share one reading (model variants
@@ -24,6 +25,8 @@
 [agents.claude]
 command = ["claude"]
 prompt = "arg"
+compact_command = "/compact"
+clear_command = "/clear"
 capabilities = ["owner", "plan", "execute", "review", "research", "debug"]
 cost_tier = "premium"
 quota = "claude"
@@ -38,6 +41,8 @@ command = ["codex", "--no-daemon"]
 # checkout explicitly (Codex trusts per git root, a worktree is a new root).
 worktree_args = ["--add-dir", "{git_common_dir}", "-c", 'projects."{cwd}".trust_level="trusted"']
 prompt = "arg"
+compact_command = "/compact"
+clear_command = "/new"
 capabilities = ["owner", "plan", "execute", "review", "research", "debug"]
 cost_tier = "premium"
 quota = "codex"
@@ -45,12 +50,31 @@ stability = "supported"
 max_parallel = 2
 
 [agents.kimi]
-# Kimi Code CLI. Not smoke-tested yet: kept out of automatic routing by
-# stability = "candidate" until tests/smoke-agent.sh passes for it.
+# Kimi Code CLI (installs to ~/.kimi-code/bin; put it on PATH or give the full
+# path in agents.local.toml). The TUI takes no initial prompt: it is sent after
+# start. Not smoke-tested yet: stability = "candidate" keeps it out of automatic
+# routing until the smoke test passes. No quota API: give it a `static` budget
+# in agents.local.toml to let routing use it for heavy work.
 command = ["kimi"]
 prompt = "send"
+compact_command = "/compact"
+clear_command = "/clear"
 capabilities = ["execute", "review", "research"]
 cost_tier = "standard"
+quota = "none"
+stability = "candidate"
+max_parallel = 1
+
+[agents.opencode]
+# OpenCode TUI; the model decides the vendor (GLM through a Z.ai plan, OpenCode
+# Zen free models, ...). `--prompt` takes the initial prompt, so the contract is
+# appended after it. Not smoke-tested yet; no quota API (use `static`).
+command = ["opencode", "--prompt"]
+prompt = "arg"
+compact_command = "/compact"
+clear_command = "/new"
+capabilities = ["execute", "review", "research"]
+cost_tier = "cheap"
 quota = "none"
 stability = "candidate"
 max_parallel = 1
