@@ -8,13 +8,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 SRC = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SRC / "scripts"))
-from orchlib import config, quota, route  # noqa: E402
+from orchlib import config, hc, quota, route, tasks  # noqa: E402
 
 NOW = 1_800_000_000.0
 
@@ -40,14 +42,14 @@ class Routing(unittest.TestCase):
     def test_codex_first(self):
         d = self.decide("execute", {"codex": q("codex", 70), "claude": q("claude", 90)})
         self.assertEqual(d["selected"], "codex")
-        self.assertIn("quota 70% > heavy reserve 30%", d["reason"])
+        self.assertIn("quota 70% (7d) - 15% this task = 55% > heavy reserve 30%", d["reason"])
 
     def test_reserve_must_survive_the_task(self):
         # Field case: 36% left, a heavy plan costs ~35%.
         qs = {"codex": q("codex", 36), "claude": q("claude", 80)}
         d = self.decide("execute", qs, costs={"codex/heavy": 35})
         self.assertEqual(d["selected"], "claude")
-        self.assertIn("quota 36% - 35% this task = 1% <= heavy reserve 30%", d["reason"])
+        self.assertIn("quota 36% (7d) - 35% this task = 1% <= heavy reserve 30%", d["reason"])
         # Field case: a second parallel heavy task sees the first one's spend.
         d = self.decide("execute", {"codex": q("codex", 77), "claude": q("claude", 80)},
                         costs={"codex/heavy": 35}, pending={"codex": 35})
@@ -61,7 +63,7 @@ class Routing(unittest.TestCase):
     def test_codex_reserve_falls_back_to_claude(self):
         d = self.decide("execute", {"codex": q("codex", 25), "claude": q("claude", 80)})
         self.assertEqual(d["selected"], "claude")
-        self.assertIn("codex (quota 25% <= heavy reserve 30%)", d["reason"])
+        self.assertIn("codex (quota 25% (7d) - 15% this task = 10% <= heavy reserve 30%)", d["reason"])
 
     def test_codex_below_heavy_reserve_still_reviews(self):
         d = self.decide("review", {"codex": q("codex", 25), "claude": q("claude", 80)})
@@ -126,6 +128,36 @@ class Routing(unittest.TestCase):
         a, b = self.decide("execute", qs), self.decide("execute", qs)
         self.assertEqual(a, b)
 
+    def test_each_window_and_account_cap(self):
+        c = cfg()
+        c["routing"]["accounts"] = {"codex": {"max_parallel": 1}}
+        x = q("codex", 90)
+        x["windows"].append({"name": "5h", "remaining_percent": 31, "resets_at": NOW + 3600})
+        d = route.decide(c, "execute", {"codex": x, "claude": q("claude", 80)},
+                         costs={"codex/heavy/5h": 5, "codex/heavy/7d": 2}, now=NOW)
+        self.assertEqual(d["selected"], "claude")
+        self.assertIn("(5h)", d["reason"])
+        d = route.decide(c, "execute", {"codex": q("codex", 90), "claude": q("claude", 80)},
+                         running={"account:codex": 1}, now=NOW)
+        self.assertIn("account busy 1/1", d["reason"])
+
+    def test_owner_reserve_and_author_account(self):
+        c = cfg()
+        d = route.decide(c, "execute", {"codex": q("codex", 10), "claude": q("claude", 38)}, now=NOW)
+        self.assertIsNone(d["selected"])
+        self.assertEqual(d["owner_quota"], {"7d": 38})
+        d = route.decide(c, "review", {"codex": q("codex", 90), "claude": q("claude", 90)},
+                         exclude_account="codex", now=NOW)
+        self.assertEqual(d["selected"], "claude")
+        self.assertTrue(d["independent"])
+        d = route.decide(c, "review", {"codex": q("codex", 90), "claude": q("claude", 90)},
+                         exclude_account="codex", override="codex", now=NOW)
+        self.assertFalse(d["independent"])
+
+    def test_stale_low_light_is_denied(self):
+        d = self.decide("review", {"codex": q("codex", 5, stale=True), "claude": q("claude", 90)})
+        self.assertEqual(d["selected"], "claude")
+
     def test_no_agent_ids_in_scheduler(self):
         text = (SRC / "scripts/orchlib/route.py").read_text()
         for aid in ("codex", "claude", "kimi", "zcode"):
@@ -158,8 +190,8 @@ class Quotas(unittest.TestCase):
                 raise OSError("no codex")
             r = quota.probe_codex(NOW, 0, rpc=broken, sessions_root=td)
             self.assertEqual(r["confidence"], "parsed-local-telemetry")
-            self.assertEqual(r["windows"][0]["remaining_percent"], 100.0)  # window already reset
-            self.assertEqual(r["effective_remaining_percent"], 70.0)
+            self.assertIsNone(r["windows"][0]["remaining_percent"])
+            self.assertIsNone(r["effective_remaining_percent"])
             self.assertIn("rpc_error", r["extra"])
 
     def test_codex_nothing(self):
@@ -204,6 +236,45 @@ class Quotas(unittest.TestCase):
         self.assertEqual(quota.headroom(q("x", 50, resets_in_h=10), NOW), 5.0)
         self.assertIsNone(quota.headroom(quota.unknown("x", "r"), NOW))
 
+    def test_vendor_denial_and_static_reset(self):
+        denied = dict(self.RPC, ordinaryUsageAllowed=False)
+        r = quota.probe_codex(NOW, 1800, rpc=lambda: denied)
+        self.assertEqual([w["remaining_percent"] for w in r["windows"]], [0.0, 0.0])
+        denied = dict(self.RPC, rateLimits=dict(self.RPC["rateLimits"], rateLimitReachedType="primary"))
+        self.assertEqual(quota.probe_codex(NOW, 1800, rpc=lambda: denied)["effective_remaining_percent"], 0)
+        self.assertIsNone(quota.probe_static("x", {"remaining_percent": 50, "resets_at": NOW-1}, NOW)["effective_remaining_percent"])
+        self.assertEqual(quota.probe_static("x", {"remaining_percent": 50, "resets_at": NOW-1,
+                                                   "period_minutes": 60}, NOW)["effective_remaining_percent"], 50)
+
+    def test_raw_cache_is_shared_but_gating_is_project_local(self):
+        with tempfile.TemporaryDirectory() as td:
+            old_dir, old_cache = quota.CACHE_DIR, quota.QUOTA_CACHE
+            quota.CACHE_DIR = Path(td)
+            quota.QUOTA_CACHE = Path(td) / "quotas.json"
+            c = cfg()
+            try:
+                with mock.patch.object(quota, "probe_codex", return_value=quota.finish(quota.codex_from_rpc(self.RPC, NOW), 0, NOW)) as probe:
+                    a = quota.all_quotas(c, max_age=9999999999)
+                    c["agents"]["codex"]["quota_windows"] = ["5h"]
+                    b = quota.all_quotas(c, max_age=9999999999)
+                self.assertEqual(probe.call_count, 1)
+                self.assertEqual(a["codex"]["effective_remaining_percent"], 41)
+                self.assertEqual(b["codex"]["effective_remaining_percent"], 73)
+            finally:
+                quota.CACHE_DIR, quota.QUOTA_CACHE = old_dir, old_cache
+
+    def test_rpc_multiple_lines_in_one_read(self):
+        with tempfile.TemporaryDirectory() as td:
+            script = Path(td) / "rpc.py"
+            script.write_text('import json, sys\nsys.stdout.write(json.dumps({"id":1,"result":{}})+"\\n"+json.dumps({"id":2,"result":{"ok":1}})+"\\n")\nsys.stdout.flush()\nsys.stdin.read()\n')
+            self.assertEqual(quota.codex_rpc(timeout=2, argv=[sys.executable, str(script)]), {"ok": 1})
+
+    def test_rpc_constructor_closes_failed_process(self):
+        with mock.patch.object(hc.subprocess, "Popen") as popen, mock.patch.object(hc.RPC, "call", side_effect=hc.HCError("hello")):
+            with self.assertRaises(hc.HCError):
+                hc.RPC()
+            popen.return_value.kill.assert_called_once()
+
 
 class Config(unittest.TestCase):
     def test_unknown_agent_in_chain(self):
@@ -233,6 +304,16 @@ class Config(unittest.TestCase):
 
     def test_codex_runs_without_daemon(self):
         self.assertIn("--no-daemon", cfg()["agents"]["codex"]["command"])
+
+    def test_account_cap_and_static_period_validate(self):
+        c = cfg()
+        c["routing"]["accounts"] = {"codex": {"max_parallel": 0}}
+        with self.assertRaisesRegex(config.ConfigError, "max_parallel"):
+            config.validate(c)
+        c["routing"]["accounts"]["codex"]["max_parallel"] = 1
+        c["agents"]["codex"]["quota_static"] = {"period_minutes": 0}
+        with self.assertRaisesRegex(config.ConfigError, "period_minutes"):
+            config.validate(c)
 
 
 class Lifecycle(unittest.TestCase):
@@ -338,10 +419,10 @@ class Lifecycle(unittest.TestCase):
         from orchlib import tasks
         c = config.load(self.repo)
         done = tasks.load_task(c, "b1")
-        self.assertEqual((done["quota_burn"], done["quota_shared"]), (18.0, False))
-        self.assertEqual(tasks.costs(c), {"codex/heavy": 18.0})
+        self.assertEqual((done["quota_burn"], done["quota_shared"]), ({"budget": 18.0}, False))
+        self.assertEqual(tasks.costs(c), {"codex/heavy/budget": 18.0})
         rc, out = self.run_orch("route", "execute", "--json")
-        self.assertIn("quota 62% - 18% this task = 44% > heavy reserve 30%", json.loads(out)["reason"])
+        self.assertIn("quota 62% (budget) - 18% this task = 44% > heavy reserve 30%", json.loads(out)["reason"])
 
     def test_report_is_committed_with_branch(self):
         rc, out = self.run_orch("dispatch", self.task(), "--role", "execute", "--id", "p2", "--json")
@@ -397,6 +478,150 @@ class Lifecycle(unittest.TestCase):
         # Limits are shown per agent environment, not per model variant.
         self.assertEqual(sorted(s["providers"]), ["claude", "codex"])
         self.assertEqual(s["providers"]["codex"]["agents"], ["codex"])
+
+    def test_account_ledger_serializes_concurrent_admission(self):
+        c = config.load(self.repo)
+        c["routing"]["accounts"] = {"codex": {"max_parallel": 1}}
+        started, release = threading.Event(), threading.Event()
+        results = []
+        def launch(*args, **kwargs):
+            if not started.is_set():
+                started.set()
+                release.wait(5)
+            return {"address": "fake-admission"}
+        def first():
+            try:
+                results.append(tasks.dispatch(c, self.task("one.md"), "review", "one"))
+            except BaseException as e:
+                results.append(e)
+        with mock.patch.object(hc, "run", side_effect=launch), mock.patch.object(tasks, "startup_check", return_value={"ok": True}):
+            worker = threading.Thread(target=first)
+            worker.start()
+            self.assertTrue(started.wait(5))
+            second = tasks.dispatch(c, self.task("two.md"), "review", "two")
+            release.set()
+            worker.join(5)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(results[0]["agent"], "codex")
+        self.assertEqual(second["agent"], "claude")
+        self.assertEqual({results[0]["agent"], second["agent"]}, {"codex", "claude"})
+
+    def test_launch_failure_cleans_ledger_worktree_and_marks_failed(self):
+        c = config.load(self.repo)
+        with mock.patch.object(hc, "run", side_effect=hc.HCError("failed")):
+            with self.assertRaises(hc.HCError):
+                tasks.dispatch(c, self.task(), "execute", "bad-launch")
+        self.assertEqual(tasks.load_task(c, "bad-launch")["state"], "failed")
+        self.assertFalse(tasks.wt_paths(c, "bad-launch")[0].exists())
+        self.assertEqual(tasks.ledger()["entries"], [])
+
+    def test_pending_uses_earliest_account_start_once(self):
+        c = config.load(self.repo)
+        data = {"entries": [
+            {"account": "codex", "project_root": str(self.repo), "task_id": "a", "agent": "codex",
+             "started_at": 1, "quota_start": {"budget": 80}, "cost_estimate": {"budget": 15}},
+            {"account": "codex", "project_root": "/other", "task_id": "b", "agent": "codex",
+             "started_at": 2, "quota_start": {"budget": 75}, "cost_estimate": {"budget": 15}}], "samples": {}}
+        quotas = {"codex": {"windows": [{"name": "budget", "remaining_percent": 65}]}}
+        self.assertEqual(tasks.pending(c, quotas, {}, data), {"codex": {"budget": 15}})
+
+    def test_window_burn_survives_other_window_reset_and_solo_median(self):
+        c = config.load(self.repo)
+        t = {"agent": "codex", "quota_start_windows": {"5h": 80, "7d": 60},
+             "quota_resets": {"5h": NOW - 1, "7d": NOW + 1000}}
+        reading = {"codex": {"windows": [{"name": "5h", "remaining_percent": None},
+                                          {"name": "7d", "remaining_percent": 50}]}}
+        with mock.patch.object(quota, "all_quotas", return_value=reading):
+            self.assertEqual(tasks.quota_burn(c, t, NOW), {"7d": 10})
+        data = {"entries": [], "samples": {"codex/heavy/7d": [1, 2, 3, 4, 5, 20]}}
+        self.assertEqual(tasks.costs(c, data), {"codex/heavy/7d": 4})
+
+    def test_collect_keep_worker_never_commits_and_planning_is_guarded(self):
+        t = json.loads(self.run_orch("dispatch", self.task(), "--role", "execute", "--id", "guard", "--json")[1])
+        wt = Path(t["cwd"])
+        report = Path(t["report"])
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text("Result: complete\n")
+        (wt / "feature.txt").write_text("x\n")
+        r = json.loads(self.run_orch("collect", "guard", "--keep-worker")[1])
+        self.assertEqual(r["state"], "running")
+        self.assertEqual(subprocess.check_output(["git", "-C", str(wt), "rev-list", "--count", "HEAD"], text=True).strip(), "1")
+        (wt / ".planning").mkdir(exist_ok=True)
+        (wt / ".planning" / "bad.md").write_text("bad")
+        with self.assertRaisesRegex(SystemExit, "bad.md"):
+            self.run_orch("collect", "guard")
+        (wt / ".planning" / "bad.md").unlink()
+        self.assertEqual(json.loads(self.run_orch("collect", "guard")[1])["state"], "complete")
+        (self.repo / "feature.txt").write_text("untracked")
+        with self.assertRaisesRegex(SystemExit, "untracked files"):
+            self.run_orch("worktree", "merge", "guard")
+
+    def test_replace_archives_collected_task_and_review_of_author(self):
+        c = config.load(self.repo)
+        author = json.loads(self.run_orch("dispatch", self.task(), "--role", "review", "--id", "author", "--json")[1])
+        Path(author["report"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(author["report"]).write_text("Result: complete\n")
+        self.run_orch("collect", "author")
+        with self.assertRaisesRegex(SystemExit, "already exists"):
+            self.run_orch("dispatch", self.task(), "--role", "review", "--id", "author")
+        t = json.loads(self.run_orch("dispatch", self.task(), "--role", "review", "--id", "author", "--replace", "--of", "author", "--json")[1])
+        self.assertEqual(t["agent"], "claude")
+        self.assertTrue(t["independent"])
+        self.assertTrue(list((tasks.runtime(c) / "archive").glob("author-*/author.json")))
+        self.assertTrue(list((tasks.runtime(c) / "archive").glob("author-*/author.md")))
+
+    def test_merge_preflight_rejects_conflicts_and_branch_planning(self):
+        t = json.loads(self.run_orch("dispatch", self.task(), "--role", "execute", "--id", "merge-guard", "--json")[1])
+        wt = Path(t["cwd"])
+        (wt / "shared.txt").write_text("branch\n")
+        Path(t["report"]).parent.mkdir(parents=True, exist_ok=True)
+        Path(t["report"]).write_text("Result: complete\n")
+        self.run_orch("collect", "merge-guard")
+        (self.repo / "shared.txt").write_text("owner\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "shared.txt"], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "commit", "-qm", "owner"], check=True)
+        with self.assertRaisesRegex(SystemExit, "merge conflict"):
+            self.run_orch("worktree", "merge", "merge-guard")
+        self.assertTrue(wt.exists())
+        (wt / ".planning").mkdir(exist_ok=True)
+        (wt / ".planning" / "changed.md").write_text("bad")
+        subprocess.run(["git", "-C", str(wt), "add", ".planning/changed.md"], check=True)
+        subprocess.run(["git", "-C", str(wt), "commit", "-qm", "bad"], check=True)
+        with self.assertRaisesRegex(SystemExit, "changed.md"):
+            self.run_orch("worktree", "merge", "merge-guard")
+
+    def test_ledger_prunes_missing_and_old_terminals(self):
+        c = config.load(self.repo)
+        with tasks.admission():
+            data = tasks.ledger()
+            data["entries"] = [
+                {"account": "codex", "agent": "codex", "project_root": "/other", "task_id": "gone",
+                 "started_at": NOW, "state": "running", "terminal": "absent"},
+                {"account": "codex", "agent": "codex", "project_root": "/other", "task_id": "old",
+                 "started_at": 1, "state": "starting"}]
+            tasks.save_ledger(data)
+        self.assertEqual(tasks.running_counts(c), {})
+
+
+class ShellChecks(unittest.TestCase):
+    def test_self_check_preserves_pycache_and_installer_accepts_worktree(self):
+        script = (SRC / "scripts/self-check.sh").read_text()
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", script)
+        self.assertNotIn("cleanup_pycache", script)
+        with tempfile.TemporaryDirectory() as td:
+            root, wt = Path(td) / "repo", Path(td) / "wt"
+            root.mkdir()
+            subprocess.run(["git", "-C", str(root), "init", "-q", "-b", "main"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "t@example.invalid"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "T"], check=True)
+            (root / "seed").write_text("x")
+            subprocess.run(["git", "-C", str(root), "add", "seed"], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "-qm", "seed"], check=True)
+            subprocess.run(["git", "-C", str(root), "worktree", "add", "-qb", "test", str(wt)], check=True)
+            p = subprocess.run([str(SRC / "scripts/install-into-repo.sh"), str(wt)],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertTrue((wt / "scripts/orch.py").exists())
 
 
 if __name__ == "__main__":

@@ -4,8 +4,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$ROOT"
 OFFLINE=0
 [[ ${1:-} == --offline ]] && OFFLINE=1
-cleanup_pycache(){ find scripts tests -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null || true; }
-trap cleanup_pycache EXIT
+export PYTHONDONTWRITEBYTECODE=1
 
 fail(){ echo "FAIL: $*" >&2; exit 1; }
 

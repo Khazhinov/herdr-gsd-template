@@ -115,7 +115,11 @@ class RPC:
         self.on_event = on_event
         self.closed = threading.Event()
         threading.Thread(target=self._reader, daemon=True).start()
-        self.call("hello")
+        try:
+            self.call("hello")
+        except BaseException:
+            self.close()
+            raise
 
     def _reader(self):
         for line in self.p.stdout:
@@ -168,6 +172,8 @@ class RPC:
         with contextlib.suppress(Exception):
             self.p.kill()
             self.p.wait(timeout=5)
+            self.p.stdin.close()
+            self.p.stdout.close()
 
 
 def doc_put_once(name, value):
