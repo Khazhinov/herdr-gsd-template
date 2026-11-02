@@ -1,70 +1,95 @@
 // GSD Mission Control for Herdr App.
 //
 // Shows the project of the active space, and only when that project runs the
-// orchestration hub (`scripts/orch.py hub start`). In other spaces the panel
-// hides its own layout node.
+// orchestration hub (`scripts/orch.py hub start`); elsewhere the panel collapses.
 //
 // Data flow (no polling of the scheduler):
 //   the hub terminal (label orch.hub) rewrites .orchestration/runtime/state.json
 //   and bumps its orch.rev label on every change. Herdr re-renders mods when
-//   terminals() change, so the new revision arrives here at once and the mod
-//   reads state.json from the hub's machine. Live worker status comes straight
-//   from terminals() (OSC 7501 reports), never from the file.
+//   terminals() change, so a new revision arrives here at once and the mod reads
+//   state.json from the hub's machine. Worker status comes from terminals()
+//   (OSC 7501); the screen tail of running workers is read every few seconds.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
-import { terminals, spaces, panes, layout, theme, run, exec, readTextFile, notify } from "herdr";
+import { terminals, spaces, panes, layout, theme, settings, run, exec, hc, readTextFile, notify } from "herdr";
 
-const NODE = "mission-control";            // id of this panel in the generated layout
+const NODE = "mission-control";
 const STATE_SUFFIX = "/.orchestration/runtime/state.json";
-const ROLES = ["execute", "review", "plan", "research", "debug"];
-const PROVIDER_NAMES = { claude: "Claude", codex: "Codex" };
+const ROLES = [["execute", "exec"], ["review", "review"], ["plan", "plan"], ["research", "research"], ["debug", "debug"]];
+const PROVIDERS = { claude: "Claude", codex: "Codex" };
+const TAIL_MS = 4000;
 
-function machineOf(address) {
-  const i = address.indexOf("/");
-  return i < 0 ? null : address.slice(0, i);
-}
+// ---------------------------------------------------------------- helpers
 
-function qualify(machine, address) {
-  if (!address) return null;
-  return machine && !address.includes("/") ? `${machine}/${address}` : address;
-}
+const machineOf = (a) => (a.indexOf("/") < 0 ? null : a.slice(0, a.indexOf("/")));
+const qualify = (m, a) => (!a ? null : m && !a.includes("/") ? `${m}/${a}` : a);
+const inside = (path, root) => !!path && (path === root || path.startsWith(root + "/"));
+const hasNode = (n, id) => !!n && typeof n === "object" && (n.id === id || (n.children || []).some((c) => hasNode(c, id)));
+const pad = (n) => String(n).padStart(2, "0");
 
-function inside(path, root) {
-  return !!path && (path === root || path.startsWith(root + "/"));
-}
-
-function hasNode(node, id) {
-  if (!node || typeof node !== "object") return false;
-  if (node.id === id) return true;
-  return (node.children || []).some((c) => hasNode(c, id));
-}
-
-function ago(ts) {
-  if (!ts) return "?";
-  const s = Math.max(0, Date.now() / 1000 - ts);
+function span(sec) {
+  const s = Math.max(0, sec);
   if (s < 90) return `${Math.round(s)}s`;
-  if (s < 5400) return `${Math.round(s / 60)}m`;
-  return `${(s / 3600).toFixed(1)}h`;
-}
-
-function until(ts) {
-  if (!ts) return "?";
-  const s = ts - Date.now() / 1000;
-  if (s <= 0) return "now";
   if (s < 5400) return `${Math.round(s / 60)}m`;
   if (s < 172800) return `${Math.round(s / 3600)}h`;
   return `${(s / 86400).toFixed(1)}d`;
 }
 
+// The JS runtime has no Intl and formats dates as en-US, so the system's own
+// patterns are read once (Windows: Get-Culture) and applied here.
+function formatWith(pattern, d, days) {
+  const h12 = d.getHours() % 12 || 12;
+  const map = {
+    yyyy: d.getFullYear(), yy: pad(d.getFullYear() % 100), MM: pad(d.getMonth() + 1), M: d.getMonth() + 1,
+    ddd: days[d.getDay()], dd: pad(d.getDate()), d: d.getDate(), HH: pad(d.getHours()), H: d.getHours(),
+    hh: pad(h12), h: h12, mm: pad(d.getMinutes()), tt: d.getHours() < 12 ? "AM" : "PM",
+  };
+  return pattern.replace(/yyyy|yy|MM|M|ddd|dd|d|HH|H|hh|h|mm|tt/g, (k) => String(map[k]));
+}
+
 export default class MissionControl extends View {
   init(_props, cx) {
-    this.states = {};   // hub address -> { rev, data, error, loading }
+    this.states = {};
+    this.tails = {};
+    this.open = {};
     this.shown = undefined;
-    // Reset countdowns and "ago" texts change with time, not with data.
+    this.fmt = { time: "HH:mm", date: "dd.MM", days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] };
+    try { this.open = JSON.parse(localStorage.getItem("open") || "{}"); } catch (_) {}
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("powershell", ["-NoProfile", "-Command",
+          "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $c=(Get-Culture).DateTimeFormat; " +
+          "$c.ShortTimePattern; $c.ShortDatePattern; ($c.AbbreviatedDayNames -join ',')"]);
+        const [time, date, days] = r.stdout.split(/\r?\n/);
+        if (time && date) {
+          // Day and month only: the year adds nothing to a reset time.
+          const dm = date.replace(/[^dM]*y+[^dM]*/g, "").replace(/^[^dM]+|[^dM]+$/g, "");
+          this.fmt = { time: time.trim(), date: dm || "dd.MM", days: days ? days.split(",") : this.fmt.days };
+          cx.notify();
+        }
+      } catch (_) { /* not Windows: keep the 24-hour default */ }
+    });
     cx.timer.every(30000, (cx) => cx.notify());
+    cx.timer.every(TAIL_MS, (cx) => this.refreshTails(cx));
   }
 
-  // The hub whose project root contains the folders of the active space.
+  resetAt(ts) {
+    if (!ts) return "?";
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    const same = d.toDateString() === now.toDateString();
+    const t = formatWith(this.fmt.time, d, this.fmt.days);
+    return same ? t : `${this.fmt.days[d.getDay()]} ${formatWith(this.fmt.date, d, this.fmt.days)} ${t}`;
+  }
+
+  toggle(key, cx) {
+    this.open[key] = !this.open[key];
+    try { localStorage.setItem("open", JSON.stringify(this.open)); } catch (_) {}
+    cx.notify();
+  }
+
+  // ---------------------------------------------------------------- data
+
   currentHub() {
     const space = spaces().find((s) => s.active);
     if (!space) return null;
@@ -72,20 +97,19 @@ export default class MissionControl extends View {
     const cwds = panes().filter((p) => tabIds.has(p.tab)).map((p) => p.cwd).filter(Boolean);
     if (space.folder) cwds.push(space.folder);
     return terminals().find((t) => {
-      const st = t.state === "live" && t.labels && t.labels["orch.hub"] && t.labels["orch.state"];
-      if (!st || (machineOf(t.address) || null) !== (space.machine || null)) return false;
+      if (!(t.state === "live" && t.labels && t.labels["orch.hub"] && t.labels["orch.state"])) return false;
+      if ((machineOf(t.address) || null) !== (space.machine || null)) return false;
       const root = t.labels["orch.state"].replace(STATE_SUFFIX, "");
       return cwds.some((c) => inside(c, root));
     }) || null;
   }
 
-  // Show the layout panel only where it has something to say. A hidden layout
-  // node stops rendering and could never show itself again, so the panel is
-  // collapsed to zero width instead and keeps receiving live data.
+  // A hidden layout node stops rendering and could never show itself again,
+  // so the panel collapses to zero width instead and keeps receiving data.
   syncVisibility(want) {
     if (this.shown === want || !hasNode(layout(), NODE)) return;
     this.shown = want;
-    if (want) run("layout.show", { id: NODE });  // undo an older hide
+    if (want) run("layout.show", { id: NODE });
     run("layout.resize", { id: NODE, px: want ? (this.openWidth || 460) : 0 });
   }
 
@@ -108,185 +132,289 @@ export default class MissionControl extends View {
     });
   }
 
+  workers() {
+    return this.liveWorkers || [];
+  }
+
+  refreshTails(cx) {
+    const ws = this.workers();
+    if (!this.shown || !ws.length) return;
+    cx.spawn(async (cx) => {
+      for (const w of ws) {
+        try {
+          const r = await hc(["read", w.address]);
+          const lines = r.stdout.split(/\r?\n/).map((l) => l.replace(/\s+$/, "")).filter((l) => l.trim());
+          this.tails[w.address] = lines.slice(-4);
+        } catch (_) { /* terminal gone: next render drops it */ }
+      }
+      cx.notify();
+    });
+  }
+
   orch(hub, args, cx) {
     const data = this.states[hub.address]?.data;
     if (!data) return;
     cx.spawn(async (cx) => {
-      const r = await exec("python3", [`${data.root}/scripts/orch.py`, ...args],
-        { cwd: data.root, on: machineOf(hub.address) });
+      const r = await exec("python3", [`${data.root}/scripts/orch.py`, ...args], { cwd: data.root, on: machineOf(hub.address) });
       if (r.code !== 0) notify({ title: "orch.py failed", body: (r.stderr || r.stdout).slice(-300), level: "error" });
       cx.notify();
     });
   }
 
+  // ---------------------------------------------------------------- view
+
   render(cx) {
     const t = theme();
     const hub = this.currentHub();
     this.syncVisibility(!!hub);
-    const root = v_flex().id("mc").size_full().bg(t.chrome).text_color(t.foreground).text_size(12.5)
-      .p(10).gap(12).overflow_y_scrollbar()
-      // Remember the width the person chose, to restore it after a collapse.
+    const root = v_flex().id("mc").size_full().bg(t.chrome).text_color(t.foreground).text_size(12)
+      .px(12).py(10).gap(14).overflow_y_scrollbar()
       .on_size_change((size) => { if (size.width > 120) this.openWidth = Math.round(size.width); });
     if (!hub) {
-      return root.child(div().text_color(t.muted)
-        .child("No orchestration hub for this space. In a template project run: python3 scripts/orch.py hub start"));
+      this.liveWorkers = [];
+      return root.child(div().text_color(t.dim).child("No orchestration hub here. Template project: python3 scripts/orch.py hub start"));
     }
     this.load(hub, cx);
     const st = this.states[hub.address] || {};
     const s = st.data;
     const m = machineOf(hub.address);
+    if (!s) return root.child(div().text_color(st.error ? t.blocked : t.dim).child(st.error || "loading…"));
 
-    root.child(v_flex().gap(2)
-      .child(div().font_semibold().text_size(14).child(hub.labels["orch.hub"]))
-      .child(div().id("hub-peek").text_color(t.dim).tooltip("Peek at the hub terminal")
-        .on_click(() => run("terminal.peek", { terminal: hub.address }))
-        .child(s ? `owner ${s.owner} · updated ${ago(s.updated_at)} ago` : "loading…")));
-    if (st.error) root.child(div().text_color(t.blocked).child(st.error));
-    if (!s) return root;
-
-    const live = {};
+    const termByTask = {};
     for (const term of terminals()) {
       const id = term.labels && term.labels["orch.task"];
-      if (id && term.labels["orch.project"] === s.project) live[id] = term;
+      if (id && term.labels["orch.project"] === s.project && term.state === "live") termByTask[id] = term;
     }
     const running = s.tasks.filter((x) => x.state === "running");
-    const done = s.tasks.filter((x) => x.state !== "running")
-      .sort((a, b) => (b.finished_at || 0) - (a.finished_at || 0)).slice(0, 3);
+    this.liveWorkers = running.map((x) => termByTask[x.id]).filter(Boolean);
+    const p = s.planning && s.planning.available ? s.planning : null;
 
-    // ---- now: GSD position + live workers
-    const now = v_flex().gap(4).child(this.title("Now", t));
-    const p = s.planning;
-    if (p && p.available) {
-      now.child(div().child(`${p.milestone || "?"} · phase ${p.phase || "?"} · ${p.status || "?"}`));
-      if (p.stopped_at) now.child(div().text_color(t.dim).child(`stopped at: ${p.stopped_at}`));
-    } else {
-      now.child(div().text_color(t.dim).child((p && p.reason) || "GSD state unknown"));
+    root.child(this.header(s, p, hub, t));
+    root.child(this.section("Active", t, running.length ? String(running.length) : null,
+      running.length ? running.map((x) => this.workerCard(x, termByTask[x.id], m, t))
+        : [div().text_color(t.dim).child("No workers running")]));
+    const next = this.upNext(p, running);
+    if (next.length) {
+      root.child(this.section("Up next", t, null, next.map(({ phase, plan }) => this.planRow(phase, plan, null, t, cx, false))));
     }
-    if (!running.length) now.child(div().text_color(t.dim).child("no workers running"));
-    for (const it of running) now.child(this.card(it, live[it.id], m, t));
-    root.child(now);
-
-    // ---- next: plans of the current phase not dispatched yet
-    const next = this.planned(s);
-    const nx = v_flex().gap(3).child(this.title("Next", t));
-    if (!next.length) nx.child(div().text_color(t.dim).child("no pending plans in the current phase"));
-    for (const it of next.slice(0, 6)) {
-      nx.child(h_flex().gap(8)
-        .child(div().w(70).child(it.id))
-        .child(div().flex_1().text_color(t.muted).truncate().child(it.title || "")));
-    }
-    root.child(nx);
-
-    // ---- quotas per agent environment
-    const qs = v_flex().gap(6).child(this.title("Limits", t));
-    for (const [kind, q] of Object.entries(s.providers || {})) {
-      const head = h_flex().gap(8).items_center()
-        .child(div().font_semibold().child(PROVIDER_NAMES[kind] || kind))
-        .child(div().text_color(q.stale ? t.blocked : t.dim).child(
-          !q.available ? "unknown" : q.stale ? `stale · seen ${ago(q.observed_at)} ago` : q.confidence));
-      const row = v_flex().gap(2).child(head);
-      if (!q.available) {
-        row.child(div().text_color(t.dim).child((q.extra && q.extra.reason) || "no quota source"));
-      }
-      for (const w of q.windows || []) {
-        const pct = Math.max(0, Math.min(100, w.remaining_percent));
-        const col = pct <= 15 ? t.blocked : pct <= 35 ? t.ansi3 : t.done;
-        row.child(h_flex().gap(8).items_center()
-          .child(div().w(28).text_color(t.muted).child(w.name))
-          .child(div().w(140).h(8).rounded(4).bg(t.surface).child(div().w(Math.round(1.4 * pct)).h(8).rounded(4).bg(col)))
-          .child(div().w(40).child(`${Math.round(pct)}%`))
-          .child(div().text_color(t.dim).child(`reset ${until(w.resets_at)}`)));
-      }
-      if (q.extra && q.extra.reset_credits_available) {
-        row.child(div().text_color(t.dim).child(`${q.extra.reset_credits_available} reset credits`));
-      }
-      qs.child(row);
-    }
-    root.child(qs);
-
-    // ---- routing: who gets the next task of each role
-    const route = v_flex().gap(3).child(this.title("Next task goes to", t));
-    for (const role of ROLES) {
-      const d = s.routing[role];
-      if (!d) continue;
-      route.child(h_flex().id(`route-${role}`).gap(8).tooltip(d.reason)
-        .child(div().w(70).text_color(t.muted).child(role))
-        .child(div().font_semibold().text_color(d.selected ? t.foreground : t.blocked).child(d.selected || "none"))
-        .child(div().text_color(t.dim).child(d.independent === false ? "not independent" : "")));
-    }
-    for (const [role, agent] of Object.entries(s.override || {})) {
-      route.child(h_flex().gap(8).items_center()
-        .child(div().text_color(t.ansi3).child(`override ${role} -> ${agent}`))
-        .child(this.button(`clear-${role}`, "clear", t, (cx) => this.orch(hub, ["prefer", role, "-"], cx))));
-    }
-    root.child(route);
-
-    // ---- recently finished
-    if (done.length) {
-      const dn = v_flex().gap(3).child(this.title("Done", t));
-      for (const it of done) {
-        dn.child(h_flex().gap(8)
-          .child(div().w(120).truncate().child(it.id))
-          .child(div().text_color(it.state === "complete" ? t.done : t.blocked).truncate()
-            .child(`${it.agent} · ${it.verdict || it.state}`)));
-      }
-      root.child(dn);
-    }
-
-    // ---- tool agents
-    if (s.tools && s.tools.length) {
-      const tools = v_flex().gap(3).child(this.title("Tool agents", t));
-      for (const tool of s.tools) {
-        const addr = qualify(m, tool.address);
-        tools.child(h_flex().id(`tool-${tool.name}`).gap(8).hover((x) => x.bg(t.hover))
-          .on_click(() => run("terminal.peek", { terminal: addr }))
-          .child(div().w(140).child(tool.tool))
-          .child(div().text_color(this.statusColor(tool.status, t)).child(tool.status || tool.state)));
-      }
-      root.child(tools);
-    }
+    if (p) root.child(this.section("Plan", t, p.progress != null ? `${p.progress}%` : null, this.planTree(p, running, t, cx)));
+    root.child(this.section("Limits", t, null, this.limits(s, t)));
+    root.child(this.section("Routing", t, null, [this.routing(s, hub, t)]));
+    const done = s.tasks.filter((x) => x.state !== "running").sort((a, b) => (b.finished_at || 0) - (a.finished_at || 0)).slice(0, 3);
+    if (done.length || (s.tools || []).length) root.child(this.section("Recent", t, null, [...done.map((x) => this.doneRow(x, t)),
+      ...(s.tools || []).map((tool) => this.toolRow(tool, m, t))]));
     return root;
   }
 
-  planned(s) {
-    const p = s.planning;
-    if (!p || !p.available) return [];
-    const ph = (p.phases || []).find((x) => String(x.id) === String(p.phase));
-    const started = new Set(s.tasks.map((x) => x.id));
-    return ((ph && ph.plans) || []).filter((x) => !x.complete && !started.has(x.id));
+  header(s, p, hub, t) {
+    const sub = p ? [p.milestone, p.phase && `phase ${p.phase}`, p.status].filter(Boolean).join(" · ") : "GSD not available";
+    return v_flex().gap(3)
+      .child(h_flex().items_center().gap(6)
+        .child(div().flex_1().font_semibold().text_size(13.5).truncate().child(s.project))
+        .child(this.pill(`owner ${s.owner}`, t))
+        .child(div().id("hub").text_color(t.dim).text_size(11).tooltip("Peek at the hub terminal")
+          .on_click(() => run("terminal.peek", { terminal: hub.address }))
+          .child(`${span(Date.now() / 1000 - s.updated_at)} ago`)))
+      .child(div().text_color(t.muted).truncate().child(sub))
+      .when(Boolean(p && p.stopped_at), (el) => el.child(div().text_color(t.dim).truncate().child(`stopped at ${p.stopped_at}`)));
   }
 
-  card(it, term, machine, t) {
-    const addr = term ? term.address : qualify(machine, it.live && it.live.address);
-    const status = term ? term.status : (it.live && it.live.status);
-    const msg = term && term.report && term.report.msg;
-    const c = v_flex().id(`card-${it.id}`).gap(2).p(6).rounded(4).bg(t.background)
-      .border(1).border_color(status === "blocked" ? t.blocked : t.border)
-      .child(h_flex().justify_between()
-        .child(div().font_semibold().truncate().child(it.id))
-        .child(div().text_color(this.statusColor(status, t)).child(status || "no status")))
-      .child(div().text_color(t.muted).child(`${it.role} · ${it.agent}`));
-    if (msg) c.child(div().text_color(t.dim).truncate().child(msg));
-    if (addr && term && term.state === "live") {
-      c.child(h_flex().gap(6)
-        .child(this.button(`focus-${it.id}`, "open", t, () => run("agent.focus", { terminal: addr })))
-        .child(this.button(`stop-${it.id}`, "stop", t, () => run("terminal.kill", { terminal: addr }))));
-    }
-    return c;
+  section(title, t, badge, children) {
+    return v_flex().gap(6)
+      .child(h_flex().items_center().gap(6)
+        .child(div().text_size(10.5).font_semibold().text_color(t.dim).child(title.toUpperCase()))
+        .when(Boolean(badge), (el) => el.child(div().text_size(10.5).text_color(t.muted).child(badge)))
+        .child(div().flex_1().h(1).bg(t.border)))
+      .children(children);
+  }
+
+  pill(text, t, color) {
+    return div().px(6).py(1).rounded(8).bg(t.raised).text_size(10.5).text_color(color || t.muted).child(text);
+  }
+
+  dot(color, size = 7) {
+    return div().size(size).rounded(size).bg(color);
   }
 
   statusColor(s, t) {
-    return { working: t.working, blocked: t.blocked, done: t.done, idle: t.idle }[s] || t.unknown;
+    return { working: t.working, blocked: t.blocked, done: t.done, idle: t.idle, error: t.blocked }[s] || t.unknown;
   }
 
-  title(text, t) {
-    return div().text_color(t.muted).text_size(11).font_semibold().child(text.toUpperCase());
+  // ---- active workers: expanded, with what they are doing right now
+  workerCard(x, term, m, t) {
+    const addr = term ? term.address : qualify(m, x.live && x.live.address);
+    // Programs that report no OSC status have status null.
+    const status = (term ? term.status : x.live && x.live.status) || (term ? "running" : "gone");
+    const msg = term && term.report && term.report.msg;
+    const tail = (addr && this.tails[addr]) || [];
+    const elapsed = x.started_at ? span(Date.now() / 1000 - x.started_at) : "";
+    const card = v_flex().id(`w-${x.id}`).gap(4).p(8).rounded(8).bg(t.background)
+      .border(1).border_color(status === "blocked" ? t.blocked : t.border)
+      .child(h_flex().items_center().gap(6)
+        .child(this.dot(this.statusColor(status, t)))
+        .child(div().font_semibold().truncate().child(x.id))
+        .child(div().flex_1())
+        .child(this.pill(x.agent, t))
+        .child(div().text_size(11).text_color(t.dim).child(`${x.role} · ${elapsed}`)));
+    card.child(div().text_color(status === "blocked" ? t.blocked : t.muted).truncate()
+      .child(msg || (status === "blocked" ? "waiting for a person" : status)));
+    if (tail.length) {
+      card.child(v_flex().p(6).rounded(6).bg(t.surface).font_family(settings().font_family || "monospace")
+        .text_size(10.5).text_color(t.dim)
+        .children(tail.map((l) => div().truncate().child(l))));
+    }
+    if (term && addr) {
+      card.child(h_flex().gap(6)
+        .child(this.button(`o-${x.id}`, "Open", t, () => run("agent.focus", { terminal: addr })))
+        .child(this.button(`p-${x.id}`, "Peek", t, () => run("terminal.peek", { terminal: addr })))
+        .child(div().flex_1())
+        .child(this.button(`k-${x.id}`, "Stop", t, () => run("terminal.kill", { terminal: addr }), t.blocked)));
+    }
+    return card;
   }
 
-  button(id, label, t, fn) {
-    return div().id(id).px(6).rounded(3).bg(t.raised).text_color(t.foreground).text_size(11)
-      .hover((x) => x.bg(t.hover))
-      .on_click((_e, cx) => fn(cx))
-      .child(label);
+  // ---- nearest plans that are neither done nor running
+  upNext(p, running) {
+    if (!p) return [];
+    const busy = new Set(running.map((x) => x.id));
+    const out = [];
+    for (const ph of p.phases || []) {
+      if (ph.complete) continue;
+      const plans = [...(ph.plans || [])].sort((a, b) => (a.wave || 0) - (b.wave || 0));
+      for (const pl of plans) if (!pl.complete && !busy.has(pl.id)) out.push({ phase: ph, plan: pl });
+      if (out.length >= 3) break;
+    }
+    return out.slice(0, 3);
+  }
+
+  // ---- phase > wave > plan > task, as deep as GSD knows it
+  planTree(p, running, t, cx) {
+    const busy = new Set(running.map((x) => x.id));
+    const rows = [];
+    for (const ph of p.phases || []) {
+      const key = `ph-${ph.id}`;
+      const current = String(ph.id) === String(p.phase);
+      const isOpen = this.open[key] ?? current;
+      const plans = ph.plans || [];
+      const doneN = plans.filter((x) => x.complete).length;
+      const glyph = ph.complete ? "✓" : current ? "●" : "○";
+      const color = ph.complete ? t.done : current ? t.accent : t.dim;
+      rows.push(h_flex().id(key).items_center().gap(6).py(1).rounded(4).hover((x) => x.bg(t.hover))
+        .on_click((_e, cx) => this.toggle(key, cx))
+        .child(div().w(10).text_color(t.dim).child(plans.length ? (isOpen ? "▾" : "▸") : ""))
+        .child(div().w(12).text_color(color).child(glyph))
+        .child(div().w(22).text_color(t.muted).child(ph.id))
+        .child(div().flex_1().truncate().text_color(ph.complete ? t.muted : t.foreground).child(ph.name || ""))
+        .child(div().text_size(10.5).text_color(t.dim).child(plans.length ? `${doneN}/${plans.length}` : this.phaseState(ph))));
+      if (!isOpen || !plans.length) continue;
+      const waves = {};
+      for (const pl of plans) (waves[pl.wave || 0] = waves[pl.wave || 0] || []).push(pl);
+      for (const w of Object.keys(waves).sort((a, b) => a - b)) {
+        rows.push(div().pl(28).text_size(10.5).text_color(t.dim).child(Number(w) ? `Wave ${w}` : "Plans"));
+        for (const pl of waves[w]) rows.push(this.planRow(ph, pl, busy, t, cx, true));
+      }
+    }
+    return rows;
+  }
+
+  phaseState(ph) {
+    return { no_directory: "not planned", discussed: "discussed", researched: "researched" }[ph.status] || ph.status || "";
+  }
+
+  planRow(ph, pl, busy, t, cx, nested) {
+    const key = `pl-${pl.id}`;
+    const working = busy && busy.has(pl.id);
+    const tasks = pl.tasks || [];
+    const doneT = pl.complete ? tasks.length : tasks.filter((x) => x.status === "done").length;
+    const isOpen = !!this.open[key];
+    const row = v_flex().gap(1)
+      .child(h_flex().id(key).items_center().gap(6).pl(nested ? 28 : 0).py(1).rounded(4).hover((x) => x.bg(t.hover))
+        .on_click((_e, cx) => this.toggle(key, cx))
+        .child(div().w(12).text_color(pl.complete ? t.done : working ? t.working : t.dim)
+          .child(pl.complete ? "✓" : working ? "◐" : "○"))
+        .child(div().w(40).text_color(t.muted).child(pl.id))
+        .child(div().flex_1().truncate().text_color(pl.complete ? t.muted : t.foreground).child(pl.title || ""))
+        .when(!nested && pl.wave != null, (el) => el.child(this.pill(`w${pl.wave}`, t)))
+        .child(div().text_size(10.5).text_color(t.dim).child(tasks.length ? `${doneT}/${tasks.length}` : "")));
+    if (isOpen) {
+      for (const task of tasks) {
+        const done = pl.complete || task.status === "done";
+        row.child(h_flex().gap(6).pl(nested ? 46 : 18)
+          .child(div().w(12).text_color(done ? t.done : task.checkpoint ? t.ansi3 : t.dim).child(done ? "✓" : task.checkpoint ? "◆" : "·"))
+          .child(div().flex_1().truncate().text_size(11).text_color(done ? t.dim : t.muted).child(task.name || `task ${task.n}`)));
+      }
+    }
+    return row;
+  }
+
+  // ---- limits per agent environment, with the exact reset time
+  limits(s, t) {
+    const out = [];
+    for (const [kind, q] of Object.entries(s.providers || {})) {
+      const state = !q.available ? "unknown" : q.stale ? `stale · ${span(Date.now() / 1000 - q.observed_at)} ago` : "";
+      out.push(h_flex().items_center().gap(6)
+        .child(div().font_semibold().child(PROVIDERS[kind] || kind))
+        .when(Boolean(state), (el) => el.child(div().text_size(10.5).text_color(q.stale ? t.blocked : t.dim).child(state)))
+        .child(div().flex_1())
+        .when(Boolean(q.extra && q.extra.reset_credits_available),
+          (el) => el.child(this.pill(`${q.extra.reset_credits_available} resets`, t))));
+      for (const w of q.windows || []) {
+        const pct = Math.max(0, Math.min(100, w.remaining_percent));
+        const col = pct <= 15 ? t.blocked : pct <= 35 ? t.ansi3 : t.done;
+        out.push(h_flex().id(`q-${kind}-${w.name}`).items_center().gap(8)
+          .tooltip(`${w.name} window: ${Math.round(w.used_percent)}% used, resets in ${span((w.resets_at || 0) - Date.now() / 1000)}`)
+          .child(div().w(22).text_color(t.dim).child(w.name))
+          .child(div().flex_1().h(5).rounded(3).bg(t.surface)
+            .child(div().h(5).rounded(3).bg(col).w(Math.max(2, Math.round(pct * 1.6)))))
+          .child(div().w(34).child(`${Math.round(pct)}%`))
+          .child(div().w(110).text_color(t.muted).text_size(11).child(this.resetAt(w.resets_at))));
+      }
+      if (!q.available) out.push(div().text_color(t.dim).truncate().child((q.extra && q.extra.reason) || "no quota source"));
+    }
+    return out;
+  }
+
+  routing(s, hub, t) {
+    const grid = h_flex().flex_wrap().gap(6);
+    for (const [role, short] of ROLES) {
+      const d = s.routing[role];
+      if (!d) continue;
+      const over = s.override && s.override[role];
+      grid.child(h_flex().id(`r-${role}`).items_center().gap(4).px(6).py(2).rounded(6).bg(t.surface)
+        .tooltip(d.reason)
+        .child(div().text_size(10.5).text_color(t.dim).child(short))
+        .child(div().text_size(11).text_color(d.selected ? (over ? t.ansi3 : t.foreground) : t.blocked)
+          .child(d.selected || "none"))
+        .when(d.independent === false, (el) => el.child(div().text_color(t.ansi3).child("!"))));
+    }
+    const overrides = Object.keys(s.override || {});
+    if (overrides.length) {
+      grid.child(this.button("clear-ov", "Clear override", t, (cx) => {
+        for (const role of overrides) this.orch(hub, ["prefer", role, "-"], cx);
+      }));
+    }
+    return grid;
+  }
+
+  doneRow(x, t) {
+    const ok = x.state === "complete";
+    return h_flex().gap(6).items_center()
+      .child(div().w(12).text_color(ok ? t.done : t.blocked).child(ok ? "✓" : "!"))
+      .child(div().w(120).truncate().child(x.id))
+      .child(div().flex_1().truncate().text_color(t.dim).text_size(11).child(`${x.agent} · ${x.verdict || x.state}`));
+  }
+
+  toolRow(tool, m, t) {
+    const addr = qualify(m, tool.address);
+    return h_flex().id(`tool-${tool.name}`).gap(6).items_center().rounded(4).hover((x) => x.bg(t.hover))
+      .on_click(() => run("terminal.peek", { terminal: addr }))
+      .child(this.dot(this.statusColor(tool.status, t), 6))
+      .child(div().flex_1().truncate().child(tool.tool))
+      .child(div().text_size(11).text_color(t.dim).child(`tool · ${tool.status || tool.state}`));
+  }
+
+  button(id, label, t, fn, color) {
+    return div().id(id).px(8).py(1).rounded(6).bg(t.raised).text_size(11).text_color(color || t.foreground)
+      .hover((x) => x.bg(t.hover)).on_click((_e, cx) => fn(cx)).child(label);
   }
 }

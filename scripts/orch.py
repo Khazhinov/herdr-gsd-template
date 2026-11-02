@@ -293,11 +293,20 @@ def cmd_watch(cfg, a):
     dirty.set()
 
     relevant = {"created", "lost", "restarted", "finished", "removed", "status", "turn", "labels"}
+    watched = set()  # addresses of worker and tool terminals
 
     def on_event(msg):
         p = msg.get("params") or {}
         # Our own doc writes and label updates would otherwise wake us forever.
         if msg.get("method") != "event" or p.get("type") not in relevant or p.get("terminal") == hub:
+            return
+        # Other projects' hubs relabel themselves on every publish; reacting to
+        # them would make hubs wake each other forever.
+        if p.get("type") == "labels" and "orch.hub" in ((p.get("data") or {}).get("labels") or {}):
+            return
+        # Status changes of unrelated terminals (the owner's own session, other
+        # programs) do not change this snapshot.
+        if p.get("type") in ("status", "turn") and p.get("terminal") not in watched:
             return
         dirty.set()
 
@@ -314,19 +323,30 @@ def cmd_watch(cfg, a):
     plan_mtime = None
     while True:
         # Events wake the loop at once; otherwise wake for the next quota refresh.
-        dirty.wait(timeout=max(1.0, min(5 if rpc is None else 15, interval - (time.time() - last_q))))
+        changed = dirty.wait(timeout=max(1.0, min(5 if rpc is None else 15, interval - (time.time() - last_q))))
         dirty.clear()
+        # Without the event stream every wake may hide a change.
+        changed = changed or rpc is None
         now = time.time()
         if now - last_q >= interval or quotas is None:
             quotas = quota.all_quotas(cfg, max_age=interval - 1)
-            last_q = now
+            last_q, changed = now, True
         try:
             m = max((p.stat().st_mtime for p in planning_dir.rglob("*.md")), default=0)
         except OSError:
             m = 0
         if plan is None or m != plan_mtime or now - last_plan > 300:
-            plan, plan_mtime, last_plan = state.planning(cfg["root"]), m, now
-        s = state.compose(cfg, quotas, with_planning=False)
+            plan, plan_mtime, last_plan, changed = state.planning(cfg["root"]), m, now, True
+        if not changed:
+            continue
+        try:
+            terms = hc.ls(all_=True)
+        except (OSError, hc.HCError):
+            terms = []
+        watched.clear()
+        watched.update(t["address"] for t in terms
+                       if {"orch.task", "orch.tool"} & set((t.get("labels") or {})))
+        s = state.compose(cfg, quotas, with_planning=False, terminals=terms)
         s["planning"] = plan
         rev += 1
         state.publish(cfg, s, hub=hub, rev=rev)

@@ -36,47 +36,76 @@ def stopped_at(root):
     return m.group(1).strip().strip('"') if m else None
 
 
+def gsd_query(root, tool, *args):
+    p = subprocess.run(["node", tool, "query", *args], cwd=root, capture_output=True, text=True, timeout=30)
+    out = p.stdout.strip()
+    # Payloads over 50 KB spill to a temp file: "@file:<path>".
+    return json.loads(Path(out[6:]).read_text() if out.startswith("@file:") else out)
+
+
 def planning(root):
-    """GSD's own read-only snapshot (planning.inspect, schema v1, GSD >= 1.19)."""
+    """The whole milestone plan as GSD knows it: every ROADMAP phase
+    (`roadmap analyze`) and, for phases already planned, their plans, waves and
+    tasks (`planning.inspect`, schema v1, GSD >= 1.19). Read-only queries."""
     if not (root / ".planning").exists():
         return {"available": False, "reason": "no .planning/"}
     tool = gsd_tools(root)
     if not tool:
         return {"available": False, "reason": "GSD not installed in this project"}
     try:
-        p = subprocess.run(["node", tool, "query", "planning", "inspect"], cwd=root,
-                           capture_output=True, text=True, timeout=30)
-        out = p.stdout.strip()
-        # Payloads over 50 KB spill to a temp file: "@file:<path>".
-        data = json.loads(Path(out[6:]).read_text() if out.startswith("@file:") else out)
+        data = gsd_query(root, tool, "planning", "inspect")
     except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as e:
         return {"available": False, "reason": f"planning.inspect unavailable: {e}"}
     if data.get("schema_version") != 1:
         return {"available": False, "reason": f"unsupported planning.inspect schema {data.get('schema_version')}"}
-    return {"available": True, "stopped_at": stopped_at(root), **summarize(data)}
+    try:
+        roadmap = gsd_query(root, tool, "roadmap", "analyze")
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        roadmap = {}
+    return {"available": True, "stopped_at": stopped_at(root), **summarize(data, roadmap)}
 
 
 def _v(x):
     return x.get("value") if isinstance(x, dict) else x
 
 
-def summarize(d):
-    phases = []
+def _first_line(text, n=140):
+    return text.strip().splitlines()[0][:n] if isinstance(text, str) and text.strip() else None
+
+
+def summarize(d, roadmap=None):
+    planned = {}
     for ph in d.get("phases", []):
-        plans = ph.get("plans") or []
-        phases.append({
-            "id": ph.get("phase_id"), "dir": ph.get("dir"), "complete": ph.get("complete"),
-            "goal": _v(ph.get("goal")),
-            "verification": (ph.get("verification") or {}).get("status"),
-            "plans": [{"id": p.get("id"), "complete": bool(p.get("hasSummary")), "wave": p.get("wave"),
-                       "title": (p.get("objective") or "").strip().splitlines()[0][:120] if p.get("objective") else None}
-                      for p in plans if isinstance(p, dict) and not p.get("superseded")],
-        })
+        plans = []
+        for p in ph.get("plans") or []:
+            if not isinstance(p, dict) or p.get("superseded"):
+                continue
+            plans.append({
+                "id": p.get("id"), "complete": bool(p.get("hasSummary")), "wave": p.get("wave"),
+                "title": _first_line(p.get("objective")),
+                "tasks": [{"n": t.get("index"), "name": _first_line(t.get("name"), 100) or t.get("type") or t.get("kind"),
+                           "status": t.get("status") or "unknown",
+                           "checkpoint": "checkpoint" in str(t.get("type") or t.get("kind") or "")}
+                          for t in p.get("tasks") or [] if isinstance(t, dict)],
+            })
+        planned[str(ph.get("phase_id"))] = {
+            "dir": ph.get("dir"), "complete": ph.get("complete"), "goal": _v(ph.get("goal")),
+            "verification": (ph.get("verification") or {}).get("status"), "plans": plans}
+    phases = []
+    for rp in (roadmap or {}).get("phases", []):
+        num = str(rp.get("number"))
+        ph = planned.pop(num, {})
+        phases.append({"id": num, "name": rp.get("name"), "goal": rp.get("goal") or ph.get("goal"),
+                       "status": rp.get("disk_status"), "complete": bool(rp.get("roadmap_complete") or ph.get("complete")),
+                       "verification": ph.get("verification"), "plans": ph.get("plans", [])})
+    # Phases on disk that the ROADMAP no longer lists still show.
+    for num, ph in planned.items():
+        phases.append({"id": num, "name": ph.get("dir"), "goal": ph.get("goal"), "status": None,
+                       "complete": ph.get("complete"), "verification": ph.get("verification"), "plans": ph["plans"]})
     act = d.get("active") or {}
-    prog = d.get("progress") or {}
     return {"milestone": (d.get("milestone") or {}).get("version"),
-            "progress": {k: v for k, v in prog.items()},
             "milestone_name": (d.get("milestone") or {}).get("name"),
+            "progress": (roadmap or {}).get("progress_percent"),
             "phase": _v(act.get("phase")), "plan": _v(act.get("plan")), "status": _v(act.get("status")),
             "phases": phases}
 
