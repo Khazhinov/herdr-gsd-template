@@ -8,6 +8,7 @@ Published three ways, all optional for orchestration itself:
 """
 import glob
 import json
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -23,6 +24,16 @@ def gsd_tools(root):
         if hits:
             return hits[0]
     return None
+
+
+def stopped_at(root):
+    """GSD's own resume point from the STATE.md frontmatter."""
+    try:
+        head = (root / ".planning" / "STATE.md").read_text().split("---")[1]
+    except (OSError, IndexError):
+        return None
+    m = re.search(r"^stopped_at:\s*(.+)$", head, re.M)
+    return m.group(1).strip().strip('"') if m else None
 
 
 def planning(root):
@@ -42,7 +53,7 @@ def planning(root):
         return {"available": False, "reason": f"planning.inspect unavailable: {e}"}
     if data.get("schema_version") != 1:
         return {"available": False, "reason": f"unsupported planning.inspect schema {data.get('schema_version')}"}
-    return {"available": True, **summarize(data)}
+    return {"available": True, "stopped_at": stopped_at(root), **summarize(data)}
 
 
 def _v(x):
@@ -70,6 +81,23 @@ def summarize(d):
             "phases": phases}
 
 
+def providers(cfg, quotas, now):
+    """Quota per agent environment (one account per probe kind), not per
+    model variant: variants of one CLI share the same windows."""
+    out = {}
+    for aid, a in cfg["agents"].items():
+        kind = a.get("quota", "none")
+        if kind == "none" or aid not in quotas:
+            continue
+        key = kind if kind in ("codex", "claude") else aid
+        q = quotas[aid]
+        if key not in out:
+            out[key] = {k: q.get(k) for k in ("available", "confidence", "stale", "windows", "observed_at", "extra")}
+            out[key]["agents"] = []
+        out[key]["agents"].append(aid)
+    return out
+
+
 def compose(cfg, quotas=None, with_planning=True, terminals=None):
     quotas = quotas or quota.all_quotas(cfg)
     now = time.time()
@@ -86,6 +114,7 @@ def compose(cfg, quotas=None, with_planning=True, terminals=None):
             "quotas": {a: {k: q.get(k) for k in ("available", "confidence", "stale", "windows",
                                                  "effective_remaining_percent", "observed_at", "extra", "source")}
                        | {"headroom": quota.headroom(q, now)} for a, q in quotas.items()},
+            "providers": providers(cfg, quotas, now),
             "routing": {role: {k: d[k] for k in ("selected", "weight", "strategy", "independent", "reason")}
                         for role, d in tasks.preview(cfg, quotas).items()},
             "override": tasks.override_get(cfg),

@@ -43,7 +43,7 @@ body = find(main, "work-body")
 if body is None:
     sys.exit("main layout has no work-body row; layout not generated")
 body["children"] = [c for c in body["children"] if c.get("id") != "mission-control"] + [{
-    "id": "mission-control", "type": "block", "size": {"px": 460}, "min": 320, "max": 900,
+    "id": "mission-control", "type": "block", "size": {"px": 460}, "min": 0, "max": 900,
     "radius": 10, "background": "chrome", "border": {"width": 1, "color": "border"},
     "content": {"mod": "gsd-mission-control"}}]
 main.pop("preview", None)

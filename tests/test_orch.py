@@ -360,6 +360,9 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(s["routing"]["execute"]["selected"], "codex")
         self.assertEqual(s["tasks"][0]["id"], "s1")
         self.assertEqual(s["tasks"][0]["live"]["state"], "live")
+        # Limits are shown per agent environment, not per model variant.
+        self.assertEqual(sorted(s["providers"]), ["claude", "codex"])
+        self.assertEqual(s["providers"]["codex"]["agents"], ["codex"])
 
 
 if __name__ == "__main__":

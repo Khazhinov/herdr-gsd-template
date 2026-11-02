@@ -340,8 +340,8 @@ def cmd_watch(cfg, a):
 
 
 def cmd_hub(cfg, a):
-    """Run `watch` in its own herdr-core terminal: the publisher that feeds the
-    Herdr App mod. It outlives the owner session and appears in the owner's space."""
+    """Run `watch` in its own hidden herdr-core terminal: the publisher that
+    feeds the Herdr App mod. It outlives the owner session."""
     name = f"orch-{config.project_name(cfg)}"[:32]
     live = [t for t in hc.ls() if t.get("name") == name]
     if a.op == "stop":
@@ -353,12 +353,9 @@ def cmd_hub(cfg, a):
     if live:
         print(f"{name} already running as {live[0]['address']}")
         return 0
+    # No herdr.space label: the hub stays out of the App's tabs; the Mission
+    # Control panel is its view.
     labels = {"orch.project": config.project_name(cfg)}
-    me = os.environ.get("HC_TERMINAL_ID")
-    if me and cfg["routing"].get("workers", {}).get("show_in_app", True):
-        space = (hc.get(me).get("labels") or {}).get("herdr.space")
-        if space:
-            labels["herdr.space"] = space
     keep = cfg["routing"].get("workers", {}).get("pass_env", tasks.DEFAULT_PASS_ENV)
     argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ],
             sys.executable, str(Path(__file__).resolve()), "--root", str(cfg["root"]), "watch"]
