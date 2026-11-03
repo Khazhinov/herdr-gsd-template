@@ -201,6 +201,12 @@ when to hand the role over and when a new template release is out.
 
 ## Optimization stack
 
+The machine-wide stack (code graph, shell output filter, output sandbox, answer style, minimal code
+rules, Codex permission profile) is set up per agent, not per project. Its description, configuration
+examples with rationale, installers and journal live in a separate repository:
+[agent-token-stack](https://github.com/Khazhinov/agent-token-stack). This template adds the
+project-level part below.
+
 Context economy rules are the same for the owner and the workers and live in
 `.agents/skills/gsd-context-discipline/SKILL.md`: code graph search or `rg` before wide reads,
 ranged reads, no rereading of unchanged files, re-review only of the diff,

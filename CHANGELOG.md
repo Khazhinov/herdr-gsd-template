@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 - 2026-11-03
+
+- `doctor.sh` checks that the Codex sandbox can run a command (`codex sandbox -- /bin/true`) when the
+  registry has a Codex agent; OPERATIONS, section 3.1 explains `bwrap: execvp .../codex` and its fix.
+- README links the machine-wide optimization stack repository.
+
 ## 0.2.2 - 2026-11-02
 
 - The hub exits on its own when the project folder is gone or no live terminal works inside the project

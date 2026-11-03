@@ -24,6 +24,19 @@ else
   echo "core: NOT reachable; workers cannot start" >&2
 fi
 
+# Codex runs shell commands through its own binary inside bwrap; a permission
+# profile that hides that binary breaks every command (OPERATIONS, section 3.1).
+if command -v codex >/dev/null && grep -q '^quota = "codex"' .orchestration/agents.toml; then
+  echo "== codex sandbox =="
+  if err=$(codex sandbox -- /bin/true 2>&1); then
+    echo "codex sandbox: OK"
+  else
+    echo "codex sandbox: FAIL: ${err##*$'\n'}" >&2
+    echo "see .orchestration/docs/OPERATIONS.md, section 3.1" >&2
+    exit 4
+  fi
+fi
+
 echo "== quotas and routing =="
 python3 scripts/orch.py quota
 python3 scripts/orch.py route execute | tail -1

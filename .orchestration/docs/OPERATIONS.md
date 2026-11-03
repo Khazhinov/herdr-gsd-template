@@ -51,6 +51,18 @@ A human answers in Herdr App or with `hc attach w-<id>`. The owner never presses
 
 A `blocked` status during work means a permission request. It is visible in the App, the dashboard and the `orch.py wait` output.
 
+## 3.1. Codex worker fails with `bwrap: execvp .../codex`
+
+Codex runs shell commands by starting its own binary inside a bwrap sandbox. If the active permission
+profile (`default_permissions` in `~/.codex/config.toml`) denies `":root"` and does not let the sandbox
+read the Codex installation (for the standalone installer: `~/.codex/packages`), every command fails
+before it starts and the worker stops without a report. `codex exec` with an explicit `-s` hides the problem,
+because the legacy sandbox mode replaces the profile and opens the whole file system for reading.
+
+Fix the profile, not the worker command: drop the `":root"` deny and deny only the secret paths
+(`"~/.config/secrets" = "deny"`), or allow reading the Codex installation. Check with
+`codex sandbox -- /bin/true`; `./scripts/doctor.sh` runs this check when the registry has a Codex agent.
+
 ## 4. Recovery after a restart
 
 - Owner session: `orch.py status` shows unfinished tasks; run `collect` for each.
