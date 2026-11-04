@@ -30,5 +30,9 @@ When you were started by `scripts/orch.py dispatch`, you are a **worker**:
 7. If a missing decision blocks you, stop with `Result: incomplete` and say what is missing.
 8. Apply `.agents/skills/gsd-context-discipline/SKILL.md`: targeted reads, no rereads, diff-only rereview, batched checks.
 
+Any runtime can be a worker or the owner: the scheduler reads only `.orchestration/agents.toml`
+(command, capabilities, reset and compact commands, quota probe) and never branches on an agent id.
+A new runtime is a new entry there; its instruction file is this `AGENTS.md` or a one-line shim to it.
+
 If you are the owner (routing.toml says so), follow `.claude/CLAUDE.md` with your runtime in place of Claude
 and `.agents/skills/orch-workers/SKILL.md`.
