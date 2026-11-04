@@ -239,8 +239,8 @@ CI (`.github/workflows/template-self-check.yml`) выполняет офлайн
 
 ## Сопутствующий репозиторий
 
-[herdr-tool-agents](https://github.com/Khazhinov/herdr-tool-agents) - постоянные tool/MCP-агенты
-(GitHub, GitLab, Portainer), переиспользуемые из любого проекта: `orch.py tools`, `orch.py tool-ask`.
+[herdr-tool-agents](https://github.com/Khazhinov/herdr-tool-agents) - реестр MCP-папок машины и постоянные tool-агенты,
+переиспользуемые из любого проекта: `orch.py tools`, `orch.py tools-link`, `orch.py tool-ask`.
 
 ## License
 

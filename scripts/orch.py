@@ -13,7 +13,7 @@ hub start|stop|restart            run `watch` in its own herdr-core terminal
 worktree create|merge|remove|path ID
 statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
 gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
-tools | tool-ask MODULE REQUEST   reusable tool agents (herdr-tool-agents hub)
+tools | tools-link MODULE... | tool-ask MODULE REQUEST   MCP registry (herdr-tool-agents hub)
 advice                            compact/clear, owner handoff, template update hints
 owner set AGENT [--launch]        hand the owner role to another agent
 """
@@ -243,18 +243,20 @@ def hub_dir(cfg):
     return Path(os.path.expanduser(d)) if d else None
 
 
-def cmd_tools(cfg, a, ask=False):
+def cmd_tools(cfg, a, ask=False, link=False):
     h = hub_dir(cfg)
     if not h or not (h / "tool_ask.py").exists():
         raise SystemExit(
             "tool hub not configured: set HERDR_TOOL_AGENTS or [tools] hub in routing.local.toml"
         )
     args = [sys.executable, str(h / "tool_ask.py")]
-    args += (
-        ["ask", a.module, a.request, *(["--write"] if a.write else []), "--timeout", str(a.timeout)]
-        if ask
-        else ["list"]
-    )
+    if link:
+        root = Path(a.root or os.environ.get("ORCH_ROOT") or config.ROOT).resolve()
+        args += ["link", str(root), *a.modules]
+    elif ask:
+        args += ["ask", a.module, a.request, *(["--write"] if a.write else []), "--timeout", str(a.timeout)]
+    else:
+        args += ["list"]
     return subprocess.call(args)
 
 
@@ -642,6 +644,7 @@ def main(argv=None):
     s.add_argument("chain", nargs=argparse.REMAINDER)
     p("gsd-cross-ai")
     p("tools")
+    p("tools-link").add_argument("modules", nargs="+")
     s = p("tool-ask")
     s.add_argument("module")
     s.add_argument("request")
@@ -667,6 +670,8 @@ def main(argv=None):
         return cmd_tools(cfg, a)
     if a.cmd == "tool-ask":
         return cmd_tools(cfg, a, ask=True)
+    if a.cmd == "tools-link":
+        return cmd_tools(cfg, a, link=True)
     try:
         return globals()["cmd_" + a.cmd.replace("-", "_")](cfg, a)
     except (RuntimeError, hc.HCError) as e:

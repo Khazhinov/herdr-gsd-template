@@ -239,8 +239,8 @@ checking overlay keys against the GSD schema manifest.
 
 ## Companion repository
 
-[herdr-tool-agents](https://github.com/Khazhinov/herdr-tool-agents) - persistent tool/MCP agents
-(GitHub, GitLab, Portainer) reusable from any project: `orch.py tools`, `orch.py tool-ask`.
+[herdr-tool-agents](https://github.com/Khazhinov/herdr-tool-agents) - machine registry of MCP folders and persistent tool agents
+reusable from any project: `orch.py tools`, `orch.py tools-link`, `orch.py tool-ask`.
 
 ## License
 

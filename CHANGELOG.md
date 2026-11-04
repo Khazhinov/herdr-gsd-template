@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.4 - 2026-11-04
+
+- `orch tools-link <module>...` links modules of the herdr-tool-agents MCP registry to the project:
+  git-ignored `.agent-tools/TOOLS.md` plus a pointer line in `AGENTS.md`; the owner skill describes
+  picking modules, calling them and that the hub keeps `TOOLS.md` current.
+- `AGENTS.md` and `.claude/CLAUDE.md` start with mandatory publication safety rules.
+
 ## 0.2.3 - 2026-11-03
 
 - `doctor.sh` checks that the Codex sandbox can run a command (`codex sandbox -- /bin/true`) when the
