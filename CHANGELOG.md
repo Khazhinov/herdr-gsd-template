@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.5 - 2026-11-04
 
 - The tool hub is renamed herdr-agent-kit: `HERDR_AGENT_KIT` names its folder (the old
   `HERDR_TOOL_AGENTS` is still read and passed to workers); the owner skill describes linked service
