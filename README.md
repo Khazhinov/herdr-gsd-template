@@ -139,7 +139,7 @@ Step-by-step protocol for the owner agent, including GSD checkpoints: [orch-work
 | Agent | Source | Confidence |
 |---|---|---|
 | Codex | `codex app-server` -> `account/rateLimits/read` (5h/7d windows, reset credits) | `official-rpc`; fallback: session logs |
-| Claude | statusline `rate_limits`, saved by `orch.py statusline-tap` | `official-statusline`, stale after 30 min |
+| Claude | statusline `rate_limits`, saved by `orch.py statusline-tap` and, when installed, herdr-agent-kit's global wrapper (any session) | `official-statusline`, stale after 30 min |
 | Others | `quota = "static"` with a budget in `agents.local.toml`, or `none` | `configured-static` / `unknown` |
 
 Role strategies: `ordered` (first suitable agent in the chain), `cheapest` (by `cost_tier`),
@@ -166,7 +166,7 @@ change, the App redraws the mod, and worker statuses come straight from OSC 7501
 | Active | running workers: status, agent message, run time; Open, Peek, Stop |
 | Up next | nearest plans not yet started |
 | Plan | the whole milestone plan: ROADMAP phases, waves inside them, plans and tasks, as far as GSD knows them |
-| Limits | quotas per runtime (Claude, Codex) per window, with exact reset time in the system format |
+| Limits | quotas per runtime (Claude, Codex) per window, with exact reset time in the system format; while herdr-agent-kit's `agent-limits` mod is on screen only the per-task quota cost stays here |
 | Routing | next agent for each role, reason in the tooltip |
 | Recent | latest finished tasks and tool agents |
 

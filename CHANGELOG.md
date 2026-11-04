@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.8 - 2026-11-04
+
+- Mission Control hides its per-window limits while herdr-agent-kit's `agent-limits` mod is shown
+  in the layout (no duplicate); the per-task quota cost stays.
+- Claude quota also merges the per-session taps of herdr-agent-kit's global statusLine wrapper
+  (`~/.cache/herdr-agent-kit/limits/claude/`, `HERDR_AGENT_KIT_CACHE`), so sessions outside GSD
+  projects count too. Tests isolate that folder.
+
 ## 0.2.7 - 2026-11-04
 
 - `herdr-app-install.sh` keeps sidebar blocks of `gsd-mission-control` that other installers changed

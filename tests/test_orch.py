@@ -16,6 +16,8 @@ from unittest import mock
 
 SRC = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SRC / "scripts"))
+# Claude taps of herdr-agent-kit on this machine must not reach the tests.
+os.environ["HERDR_AGENT_KIT_CACHE"] = tempfile.mkdtemp()
 from orchlib import config, hc, quota, route, state, tasks  # noqa: E402
 
 NOW = 1_800_000_000.0

@@ -139,7 +139,7 @@ python3 scripts/orch.py worktree merge 14-01
 | Агент | Источник | Достоверность |
 |---|---|---|
 | Codex | `codex app-server` -> `account/rateLimits/read` (окна 5ч/7д, кредиты сброса) | `official-rpc`; запасной путь - журналы сессий |
-| Claude | данные `rate_limits` из statusline, сохраняемые `orch.py statusline-tap` | `official-statusline`, устаревает через 30 мин |
+| Claude | данные `rate_limits` из statusline, сохраняемые `orch.py statusline-tap` и, если установлена, глобальной обёрткой herdr-agent-kit (любая сессия) | `official-statusline`, устаревает через 30 мин |
 | Прочие | `quota = "static"` с бюджетом в `agents.local.toml` или `none` | `configured-static` / `unknown` |
 
 Стратегии ролей: `ordered` (первый подходящий по цепочке), `cheapest` (по `cost_tier`),
@@ -167,7 +167,7 @@ herdr-agent-kit).
 | Active | работающие воркеры: статус, сообщение агента, время работы; Open, Peek, Stop |
 | Up next | ближайшие незапущенные планы |
 | Plan | весь план вехи: фазы ROADMAP, внутри волны, планы и задачи, насколько GSD их уже знает |
-| Limits | квоты по средам (Claude, Codex) по окнам с точным временем сброса в формате системы |
+| Limits | квоты по средам (Claude, Codex) по окнам с точным временем сброса в формате системы; пока на экране мод `agent-limits` из herdr-agent-kit, здесь остаётся только расход квоты на задачу |
 | Routing | агент следующей задачи каждой роли, причина во всплывающей подсказке |
 | Recent | последние завершённые задачи и tool-агенты |
 

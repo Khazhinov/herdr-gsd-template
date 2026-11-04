@@ -18,6 +18,9 @@ from pathlib import Path
 CACHE_DIR = Path(os.environ.get("ORCH_CACHE_DIR") or Path.home() / ".cache" / "herdr-orch")
 CLAUDE_SNAPSHOT = CACHE_DIR / "claude-statusline.json"
 QUOTA_CACHE = CACHE_DIR / "quotas.json"
+# herdr-agent-kit's global statusLine wrapper taps every Claude session on the
+# machine, GSD projects or not: one file per session, {"seen", "rate_limits"}.
+KIT_TAPS = Path(os.environ.get("HERDR_AGENT_KIT_CACHE") or Path.home() / ".cache" / "herdr-agent-kit") / "limits" / "claude"
 
 
 def unknown(agent, reason, source=None):
@@ -240,15 +243,16 @@ def merge_sessions(now, stale_after_s):
     is not the newest reading. Per window: the latest resets_at is the current
     window, and within one window usage only grows, so the highest used wins."""
     best, seen = {}, None
-    for p in (CACHE_DIR / "owner-sessions").glob("*.json"):
+    for p in [*(CACHE_DIR / "owner-sessions").glob("*.json"), *KIT_TAPS.glob("*.json")]:
         try:
             d = json.loads(p.read_text())
         except (OSError, json.JSONDecodeError):
             continue
         rl = d.get("rate_limits")
-        if not isinstance(rl, dict) or now - d.get("observed_at", 0) > stale_after_s:
+        at = d.get("observed_at") or d.get("seen") or 0
+        if not isinstance(rl, dict) or now - at > stale_after_s:
             continue
-        seen = max(seen or 0, d["observed_at"])
+        seen = max(seen or 0, at)
         for key, w in rl.items():
             if not isinstance(w, dict) or w.get("used_percentage") is None:
                 continue

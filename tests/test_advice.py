@@ -12,6 +12,8 @@ from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SRC / "scripts"))
+# Claude taps of herdr-agent-kit on this machine must not reach the tests.
+os.environ["HERDR_AGENT_KIT_CACHE"] = tempfile.mkdtemp()
 from orchlib import advice, config, quota  # noqa: E402
 
 NOW = time.time()
@@ -129,6 +131,15 @@ class Advice(unittest.TestCase):
         q = quota.probe_claude(NOW, 1800)
         five = next(w for w in q["windows"] if w["name"] == "5h")
         self.assertEqual(five["used_percent"], 27)
+        # A session outside GSD projects, tapped by herdr-agent-kit's statusLine wrapper.
+        quota.KIT_TAPS.mkdir(parents=True, exist_ok=True)
+        (quota.KIT_TAPS / "other.json").write_text(json.dumps({"seen": NOW, "rate_limits": {
+            "five_hour": {"used_percentage": 33, "resets_at": NOW + 4 * 3600}}}))
+        try:
+            q = quota.probe_claude(NOW, 1800)
+        finally:
+            (quota.KIT_TAPS / "other.json").unlink()
+        self.assertEqual(next(w for w in q["windows"] if w["name"] == "5h")["used_percent"], 33)
 
     def test_tap_keeps_snapshot_without_rate_limits(self):
         env = {**os.environ, "ORCH_CACHE_DIR": str(quota.CACHE_DIR)}

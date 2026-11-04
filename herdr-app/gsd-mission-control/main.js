@@ -24,6 +24,9 @@ const machineOf = (a) => (a.indexOf("/") < 0 ? null : a.slice(0, a.indexOf("/"))
 const qualify = (m, a) => (!a ? null : m && !a.includes("/") ? `${m}/${a}` : a);
 const inside = (path, root) => !!path && (path === root || path.startsWith(root + "/"));
 const hasNode = (n, id) => !!n && typeof n === "object" && (n.id === id || (n.children || []).some((c) => hasNode(c, id)));
+// A shown block of that mod (herdr-agent-kit's agent-limits draws the same limits for every agent).
+const modShown = (n, mod) => !!n && typeof n === "object" && !n.hidden
+  && ((n.content && n.content.mod === mod) || (n.children || []).some((c) => modShown(c, mod)));
 const pad = (n) => String(n).padStart(2, "0");
 
 function span(sec) {
@@ -193,7 +196,10 @@ export default class MissionControl extends View {
       root.child(this.section("Up next", t, null, next.map(({ phase, plan }) => this.planRow(phase, plan, null, t, cx, false))));
     }
     if (p) root.child(this.section("Plan", t, p.progress != null ? `${p.progress}%` : null, this.planTree(p, running, t, cx)));
-    root.child(this.section("Limits", t, null, this.limits(s, t)));
+    // With the agent-limits mod on screen only what it lacks stays: per-task quota cost.
+    const own = modShown(layout(), "agent-limits");
+    const lim = this.limits(s, t, own);
+    if (lim.length) root.child(this.section("Limits", t, null, lim));
     root.child(this.section("Routing", t, null, [this.routing(s, hub, t)]));
     const done = s.tasks.filter((x) => x.state !== "running").sort((a, b) => (b.finished_at || 0) - (a.finished_at || 0)).slice(0, 3);
     if (done.length || (s.tools || []).length) root.child(this.section("Recent", t, null, [...done.map((x) => this.doneRow(x, t)),
@@ -350,9 +356,16 @@ export default class MissionControl extends View {
   }
 
   // ---- limits per agent environment, with the exact reset time
-  limits(s, t) {
+  limits(s, t, costOnly) {
     const out = [];
     for (const [kind, q] of Object.entries(s.providers || {})) {
+      if (costOnly) {
+        const cost = Object.entries(q.task_cost || {}).filter(([, v]) => v != null).map(([k, v]) => `${k} ≈${Math.round(v)}%`);
+        if (cost.length) out.push(div().text_size(10.5).text_color(t.dim)
+          .tooltip("Median quota spend of one task that ran alone; routing keeps the reserve after it")
+          .child(`${PROVIDERS[kind] || kind} per task: ${cost.join(" · ")}`));
+        continue;
+      }
       const state = !q.available ? "unknown" : q.stale ? `stale · ${span(Date.now() / 1000 - q.observed_at)} ago` : "";
       out.push(h_flex().items_center().gap(6)
         .child(div().font_semibold().child(PROVIDERS[kind] || kind))
