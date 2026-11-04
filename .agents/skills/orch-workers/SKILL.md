@@ -88,7 +88,8 @@ it routes each delegated plan exactly like `orch dispatch` and blocks until the 
 - `orch hub start` runs the publisher in its own terminal. Herdr App shows it through the
   `GSD Mission Control` layout or window (`scripts/herdr-app-install.sh`).
 - `orch status` prints the same snapshot in the terminal; `--json` for tools.
-- Workers appear as tabs in the owner's Herdr space (`[workers] show_in_app`).
+- Workers appear as tabs in Herdr App, never hidden: the owner's space, or the project's space when
+  the owner terminal has none or `[workers] space = "project"` (OPERATIONS 3.2).
 
 ## 6. Reusable tool agents
 

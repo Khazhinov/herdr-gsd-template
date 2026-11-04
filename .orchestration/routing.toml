@@ -70,8 +70,12 @@ light = "allow"
 stale_after_minutes = 30
 
 [workers]
-# Show worker terminals as tabs in the owner's Herdr App space.
+# Show worker terminals as tabs in Herdr App.
 show_in_app = true
+# Which space gets the tabs: "caller" (the owner's space; the project's space when the owner
+# terminal has none) or "project" (the space whose tabs work inside this repository, created when
+# none exists). A worker is never hidden while show_in_app is true.
+space = "caller"
 # Keep workers alive if the owner's program ends; tasks are durable anyway.
 outlive_parent = true
 # Relative to the repository: workers inherit the owner's folder trust.

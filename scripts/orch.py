@@ -15,7 +15,7 @@ statusline-tap -- CMD...          Claude statusline wrapper that records rate li
 gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
 tools | tools-link MODULE... | tool-ask MODULE REQUEST   MCP registry (herdr-agent-kit hub)
 advice                            compact/clear, owner handoff, template update hints
-owner set AGENT [--launch]        hand the owner role to another agent
+owner set AGENT [--launch] [--space caller|project]   hand the owner role to another agent
 """
 
 import argparse
@@ -574,15 +574,8 @@ def cmd_owner(cfg, a):
         if ag.get("prompt", "arg") == "arg":
             argv.append(prompt)
         labels = {"orch.owner": a.agent}
-        parent = os.environ.get("HC_TERMINAL_ID")
-        if parent:
-            try:
-                space = (hc.get(parent).get("labels") or {}).get("herdr.space")
-            except hc.HCError:
-                space = None
-            if space:
-                labels["herdr.space"] = space
         res = hc.run(argv, f"owner-{a.agent}"[:32], cfg["root"], labels, outlive_parent=True)
+        hc.show(f"owner-{a.agent}"[:32], cfg["root"], a.space or "caller")
         if ag.get("prompt") == "send":
             hc.wait(f"owner-{a.agent}"[:32], timeout=120)
             hc.send(f"owner-{a.agent}"[:32], prompt)
@@ -657,6 +650,8 @@ def main(argv=None):
     s.add_argument("op", choices=["set"])
     s.add_argument("agent")
     s.add_argument("--launch", action="store_true", help="start the new owner in a terminal")
+    s.add_argument("--space", choices=hc.SPACES,
+                   help="Herdr App space of the new owner: caller (default) or project")
     s.add_argument("--force", action="store_true", help="skip the fresh-handoff check")
 
     a = ap.parse_args(argv)

@@ -522,15 +522,10 @@ def dispatch(
             "orch.agent": aid,
             "orch.project": project_name(cfg),
         }
-        if w.get("show_in_app", True) and parent:
-            try:
-                space = (hc.get(parent).get("labels") or {}).get("herdr.space")
-            except hc.HCError:
-                space = None
-            if space:
-                labels["herdr.space"] = space
         name = f"w-{tid}"[:32]
         res = hc.run(argv, name, cwd, labels, outlive_parent=w.get("outlive_parent", True))
+        if w.get("show_in_app", True):
+            hc.show(name, cfg["root"], w.get("space", "caller"))
         addr = res.get("address") if isinstance(res, dict) else None
         with admission():
             data = ledger()

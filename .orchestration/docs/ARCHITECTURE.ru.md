@@ -41,6 +41,7 @@ route(role, weight) -> decision + reason -> runtime/decisions.jsonl
   -> execute: git worktree .orchestration/worktrees/<id>, ветка orch/<id>
   -> контракт runtime/tasks/<id>.md = задача владельца + протокол
   -> hc run --bg --name w-<id> --cwd <dir> --label orch.* [--outlive-parent] -- env PATH=... <agent argv> "<prompt>"
+  -> метка herdr.space: пространство владельца или проекта ([workers] space), создаётся при отсутствии
   -> startup_check: агент сообщил статус OSC 7501, иначе диагностика (диалог доверия, вход)
   -> воркер пишет отчёт; хост узнаёт о событии через hc wait --children
   -> collect: маркер отчёта, проверка .planning/, остановка терминала, коммит изменений worktree, копия отчёта, удаление записи ledger

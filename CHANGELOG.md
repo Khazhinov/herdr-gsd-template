@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.6 - 2026-11-04
+
+- Workers and a launched owner are always shown in Herdr App. `[workers] space = "caller"` (default)
+  keeps the owner's space and falls back to the project's space when the owner terminal is not in
+  the App, where workers used to stay hidden; `"project"` uses the space whose tabs work inside the
+  repository (matched by the live folder of its terminals, as Mission Control does) and creates one
+  when none exists. `orch.py owner set --launch --space caller|project`.
+
 ## 0.2.5 - 2026-11-04
 
 - The tool hub is renamed herdr-agent-kit: `HERDR_AGENT_KIT` names its folder (the old

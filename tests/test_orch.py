@@ -447,6 +447,46 @@ class Lifecycle(unittest.TestCase):
         log = (self.repo / ".orchestration/runtime/decisions.jsonl").read_text().splitlines()
         self.assertEqual(json.loads(log[-1])["task"], "r1")
 
+    def hc_state(self, seed=None):
+        p = Path(self.td) / "hc.json"
+        if seed is not None:
+            p.write_text(json.dumps({"n": 0, "calls": [], "docs": {}, **seed}))
+        return json.loads(p.read_text())
+
+    def worker_space(self, tid):
+        t = next(x for x in self.hc_state()["terms"].values() if x["name"] == f"w-{tid}")
+        return t["labels"].get("herdr.space")
+
+    def test_worker_shown_without_caller_space(self):
+        # no owner terminal in the App: the worker gets the project's space, created here
+        self.run_orch("dispatch", self.task(), "--role", "review", "--id", "v1")
+        spaces = self.hc_state()["docs"]["herdr-app"]["value"]["spaces"]
+        self.assertEqual(len(spaces), 1)
+        self.assertEqual(spaces[0]["folder"], os.path.realpath(self.repo))
+        self.assertEqual(self.worker_space("v1"), spaces[0]["id"])
+
+    def test_worker_in_caller_space(self):
+        self.hc_state({"terms": {"t0": {"address": "t0", "name": "me", "state": "live", "cwd": "/x",
+                                        "labels": {"herdr.space": "spCALLER"}}}})
+        os.environ["HC_TERMINAL_ID"] = "t0"
+        self.run_orch("dispatch", self.task(), "--role", "review", "--id", "v2")
+        self.assertEqual(self.worker_space("v2"), "spCALLER")
+
+    def test_project_space_by_live_folder(self):
+        routing = self.repo / ".orchestration/routing.toml"
+        routing.write_text(routing.read_text().replace('space = "caller"', 'space = "project"'))
+        # `folder` is where a space was created; the live folder of its tab decides
+        self.hc_state({"terms": {"t0": {"address": "t0", "name": "me", "state": "live",
+                                        "cwd": str(self.repo / "docs"), "labels": {"herdr.space": "spCALLER"}}},
+                       "docs": {"herdr-app": {"version": 4, "value": {"spaces": [
+                           {"id": "spSTALE", "folder": str(self.repo), "tabs": []},
+                           {"id": "spLIVE", "folder": "/elsewhere", "tabs": [{"root": {"children": [
+                               {"type": "block", "content": {"terminal": "t0"}}]}}]}]}}}})
+        os.environ["HC_TERMINAL_ID"] = "t0"
+        self.run_orch("dispatch", self.task(), "--role", "review", "--id", "v3")
+        self.assertEqual(self.worker_space("v3"), "spLIVE")
+        self.assertEqual(self.hc_state()["docs"]["herdr-app"]["version"], 4)  # nothing created
+
     def test_demanded_agent_must_be_eligible(self):
         (self.repo / ".orchestration/agents.local.toml").write_text(
             '[agents.codex]\nquota = "static"\nquota_static = {remaining_percent = 5}\n'

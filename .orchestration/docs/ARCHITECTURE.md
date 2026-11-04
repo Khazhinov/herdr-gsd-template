@@ -41,6 +41,7 @@ route(role, weight) -> decision + reason -> runtime/decisions.jsonl
   -> execute: git worktree .orchestration/worktrees/<id>, branch orch/<id>
   -> contract runtime/tasks/<id>.md = owner's task + protocol
   -> hc run --bg --name w-<id> --cwd <dir> --label orch.* [--outlive-parent] -- env PATH=... <agent argv> "<prompt>"
+  -> herdr.space label: the owner's space or the project's ([workers] space), created when missing
   -> startup_check: the agent reported an OSC 7501 status, otherwise diagnostics (trust dialog, login)
   -> the worker writes a report; the host learns about the event with hc wait --children
   -> collect: report marker, .planning/ check, terminal stop, commit of worktree changes, report copy, ledger entry removal

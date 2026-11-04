@@ -115,7 +115,17 @@ def main(a):
                 all_ = (req.get("params") or {}).get("all")
                 res = {"terminals": [x for x in s["terms"].values() if all_ or x["state"] == "live"]}
             elif req["method"] == "doc.get":
-                res = {"value": None, "version": 0}
+                d = s["docs"].get(req["params"]["name"], {"value": None, "version": 0})
+                res = {"value": d["value"], "version": d["version"]}
+            elif req["method"] == "doc.set":
+                name, cur = req["params"]["name"], s["docs"].get(req["params"]["name"], {"version": 0})
+                if req["params"]["version"] != cur["version"]:
+                    print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "error": {
+                        "code": -32000, "data": {"kind": "conflict"}, "message": "conflict"}}), flush=True)
+                    continue
+                s["docs"][name] = {"value": req["params"]["value"], "version": cur["version"] + 1}
+                save(s)
+                res = {"version": cur["version"] + 1}
             else:
                 res = {"version": 1}
             print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": res}), flush=True)

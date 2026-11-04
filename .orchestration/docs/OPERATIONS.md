@@ -18,7 +18,7 @@ English | [Русский](OPERATIONS.ru.md)
 | `orch.py watch` | the same publisher, printing the dashboard to the current terminal |
 | `orch.py tools`, `orch.py tool-ask <module> "<request>"` | hub tool agents |
 | `orch.py advice [--json]` | owner hints: compact or clear context, owner handoff, template update |
-| `orch.py owner set <agent> [--launch] [--force]` | owner handoff (section 5) |
+| `orch.py owner set <agent> [--launch] [--space caller\|project] [--force]` | owner handoff (section 5) |
 
 ## 2. Local overrides
 
@@ -63,6 +63,21 @@ Fix the profile, not the worker command: drop the `":root"` deny and deny only t
 (`"~/.config/secrets" = "deny"`), or allow reading the Codex installation. Check with
 `codex sandbox -- /bin/true`; `./scripts/doctor.sh` runs this check when the registry has a Codex agent.
 
+## 3.2. Worker tabs in Herdr App
+
+With `[workers] show_in_app = true` every worker and a launched owner get a tab; none stays hidden.
+`[workers] space` picks the space:
+
+| Value | Space |
+|---|---|
+| `caller` (default) | the space of the terminal that ran `dispatch` (the owner's); when that terminal is not in the App (started by `hc run`, outside Herdr App), the project's space |
+| `project` | the space whose tabs work inside this repository now (live folder of its terminals, as Mission Control decides); created with one tab when none exists |
+
+The App stores its layout in the core document `herdr-app`; a terminal labelled `herdr.space=<id>`
+gets a tab there. The stored `folder` of a space is where it was created and does not follow `cd`,
+so it is only a fallback. Closing a worker's tab ends the worker; its task stays and `collect`
+reports it.
+
 ## 4. Recovery after a restart
 
 - Owner session: `orch.py status` shows unfinished tasks; run `collect` for each.
@@ -77,7 +92,7 @@ Reasons: the owner runs out of its vendor quota (`orch.py advice` suggests a swi
 1. Safe boundary: tasks are collected or can keep running (the new owner collects them), review decisions are recorded.
 2. The current owner runs `/gsd-pause-work`: GSD writes `.planning/HANDOFF.json` and `.continue-here.md` and commits them.
 3. GSD for the new owner is installed with the official installer (`npx @opengsd/gsd-core@<pin> --<runtime> --local`); for Codex the guard block of `.codex/config.toml` is reviewed.
-4. `orch.py owner set <agent> --launch` checks the `owner` capability and the freshness of `HANDOFF.json` (no older than `advice.handoff_max_age_minutes`), changes `owner` in `routing.toml` and starts the new owner as a tab in the space of the calling terminal. `--force` skips the check if the previous owner is unavailable.
+4. `orch.py owner set <agent> --launch` checks the `owner` capability and the freshness of `HANDOFF.json` (no older than `advice.handoff_max_age_minutes`), changes `owner` in `routing.toml` and starts the new owner as a tab in the space of the calling terminal (`--space project`: the project's space, see below). `--force` skips the check if the previous owner is unavailable.
 5. The new owner runs `/gsd-resume-work` and `orch.py status`; the `routing.toml` change is committed with the handoff.
 
 ## 5.1. Owner context hygiene
