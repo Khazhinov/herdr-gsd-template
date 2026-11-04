@@ -13,7 +13,7 @@ hub start|stop|restart            run `watch` in its own herdr-core terminal
 worktree create|merge|remove|path ID
 statusline-tap -- CMD...          Claude statusline wrapper that records rate limits
 gsd-cross-ai                      GSD workflow.cross_ai_command bridge (stdin -> SUMMARY)
-tools | tools-link MODULE... | tool-ask MODULE REQUEST   MCP registry (herdr-tool-agents hub)
+tools | tools-link MODULE... | tool-ask MODULE REQUEST   MCP registry (herdr-agent-kit hub)
 advice                            compact/clear, owner handoff, template update hints
 owner set AGENT [--launch]        hand the owner role to another agent
 """
@@ -239,7 +239,8 @@ def cmd_gsd_cross_ai(cfg, a):
 
 
 def hub_dir(cfg):
-    d = os.environ.get("HERDR_TOOL_AGENTS") or cfg["routing"].get("tools", {}).get("hub")
+    d = (os.environ.get("HERDR_AGENT_KIT") or os.environ.get("HERDR_TOOL_AGENTS")  # old name still read
+         or cfg["routing"].get("tools", {}).get("hub"))
     return Path(os.path.expanduser(d)) if d else None
 
 
@@ -247,7 +248,7 @@ def cmd_tools(cfg, a, ask=False, link=False):
     h = hub_dir(cfg)
     if not h or not (h / "tool_ask.py").exists():
         raise SystemExit(
-            "tool hub not configured: set HERDR_TOOL_AGENTS or [tools] hub in routing.local.toml"
+            "tool hub not configured: set HERDR_AGENT_KIT or [tools] hub in routing.local.toml"
         )
     args = [sys.executable, str(h / "tool_ask.py")]
     if link:

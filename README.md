@@ -65,7 +65,7 @@ Human ── Herdr App (Windows/macOS/Linux) ── Mission Control (mod + layou
                     ├── w-<id>  Codex   execute  (worktree orch/<id>)
                     ├── w-<id>  Codex   review   (root, read-only)
                     ├── orch-<project>  hub: publishes state for the dashboard
-                    └── tool-<module>   persistent tool agents (herdr-tool-agents)
+                    └── tool-<module>   persistent tool agents (herdr-agent-kit)
 ```
 
 | Layer | Responsible for |
@@ -239,8 +239,9 @@ checking overlay keys against the GSD schema manifest.
 
 ## Companion repository
 
-[herdr-tool-agents](https://github.com/Khazhinov/herdr-tool-agents) - machine registry of MCP folders and persistent tool agents
-reusable from any project: `orch.py tools`, `orch.py tools-link`, `orch.py tool-ask`.
+[herdr-agent-kit](https://github.com/Khazhinov/herdr-agent-kit) (formerly herdr-tool-agents) - machine registry of MCP folders
+and service repositories with persistent, visible worker agents, reusable from any project:
+`orch.py tools`, `orch.py tools-link`, `orch.py tool-ask`; service functions through `tool_ask.py call`.
 
 ## License
 

@@ -33,6 +33,7 @@ DEFAULT_PASS_ENV = [
     "https_proxy",
     "NO_PROXY",
     "no_proxy",
+    "HERDR_AGENT_KIT",
     "HERDR_TOOL_AGENTS",
 ]
 

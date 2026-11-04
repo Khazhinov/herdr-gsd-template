@@ -80,7 +80,8 @@ branch_prefix = "orch/"
 # Caller environment carried into workers (herdr-core starts programs with
 # its own environment, which often lacks ~/.local/bin and proxies).
 pass_env = ["PATH", "LANG", "LC_ALL", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy",
-            "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy", "HERDR_TOOL_AGENTS"]
+            "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy", "HERDR_AGENT_KIT",
+            "HERDR_TOOL_AGENTS"]
 
 [watch]
 # Seconds between quota refreshes in `orch.py watch`.

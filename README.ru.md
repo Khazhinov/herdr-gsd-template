@@ -65,7 +65,7 @@ Human ── Herdr App (Windows/macOS/Linux) ── Mission Control (мод + р
                     ├── w-<id>  Codex   execute  (worktree orch/<id>)
                     ├── w-<id>  Codex   review   (корень, только чтение)
                     ├── orch-<project>  hub: публикует состояние для дашборда
-                    └── tool-<module>   постоянные tool-агенты (herdr-tool-agents)
+                    └── tool-<module>   постоянные tool-агенты (herdr-agent-kit)
 ```
 
 | Слой | Отвечает за |
@@ -239,8 +239,10 @@ CI (`.github/workflows/template-self-check.yml`) выполняет офлайн
 
 ## Сопутствующий репозиторий
 
-[herdr-tool-agents](https://github.com/Khazhinov/herdr-tool-agents) - реестр MCP-папок машины и постоянные tool-агенты,
-переиспользуемые из любого проекта: `orch.py tools`, `orch.py tools-link`, `orch.py tool-ask`.
+[herdr-agent-kit](https://github.com/Khazhinov/herdr-agent-kit) (прежнее название herdr-tool-agents) - реестр MCP-папок
+и служебных репозиториев машины с постоянными видимыми агентами-исполнителями, переиспользуемый из
+любого проекта: `orch.py tools`, `orch.py tools-link`, `orch.py tool-ask`; функции служебных репозиториев -
+через `tool_ask.py call`.
 
 ## License
 

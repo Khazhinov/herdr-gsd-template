@@ -92,13 +92,17 @@ it routes each delegated plan exactly like `orch dispatch` and blocks until the 
 
 ## 6. Reusable tool agents
 
-The herdr-tool-agents hub is the machine registry of folders with MCP servers. Do not load those
-MCP servers into the owner session.
+The herdr-agent-kit hub is the machine registry of folders with MCP servers and of service
+repositories (repositories whose functions other projects call). Do not load those MCP servers into
+the owner session.
 
 - The user names MCP the project needs: `orch tools` lists registered modules; pick the matching
   ones (ask the user if unsure), then `orch tools-link <module>...`. It writes the git-ignored
-  `.agent-tools/TOOLS.md` (tool names per module, how to call) and a one-line pointer in `AGENTS.md`.
+  `.agent-tools/TOOLS.md` (index of linked modules, how to call), `.agent-tools/<module>.md` (tools
+  or functions of one module) and a one-line pointer in `AGENTS.md`.
 - Call: `orch tool-ask <module> "<narrow request naming tool and parameters>"` returns a file path
   with the answer. Parameters of a tool: the `card` command named in `TOOLS.md`. Read-only by
   default; add `--write` only when the user explicitly allowed that change.
-- The hub refreshes `TOOLS.md` of linked projects itself (`sync`); do not edit it.
+- Service repository: the `call` line in `.agent-tools/<module>.md`; long tasks with `--async`, then
+  one blocking `wait` (inside herdr a watcher child terminal notes you when it ends).
+- The hub refreshes `.agent-tools/` of linked projects itself (`sync`); do not edit it.

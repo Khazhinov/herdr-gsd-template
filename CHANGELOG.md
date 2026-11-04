@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The tool hub is renamed herdr-agent-kit: `HERDR_AGENT_KIT` names its folder (the old
+  `HERDR_TOOL_AGENTS` is still read and passed to workers); the owner skill describes linked service
+  repositories and the per-module files under `.agent-tools/`.
+
 ## 0.2.4 - 2026-11-04
 
 - `orch tools-link <module>...` links modules of the herdr-tool-agents MCP registry to the project:
