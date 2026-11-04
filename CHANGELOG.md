@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.7 - 2026-11-04
+
+- `herdr-app-install.sh` keeps sidebar blocks of `gsd-mission-control` that other installers changed
+  or added (herdr-agent-kit's `space-groups` and `agent-limits`) when it regenerates the layout from
+  `main`; before, a reinstall dropped them.
+
 ## 0.2.6 - 2026-11-04
 
 - Workers and a launched owner are always shown in Herdr App. `[workers] space = "caller"` (default)

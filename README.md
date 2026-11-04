@@ -152,6 +152,9 @@ python3 scripts/orch.py hub start        # state publisher in its own hc termina
 ./scripts/herdr-app-install.sh           # mod + "GSD Mission Control" layout in Herdr App
 ```
 
+The installer regenerates the layout from the app's `main` and keeps sidebar blocks that other
+installers changed or added (for example herdr-agent-kit's space groups and agent limits).
+
 The panel appears only in an App space whose terminals run inside a project with a running hub;
 in other spaces it collapses. Updates are reactive: the hub changes its terminal labels on every
 change, the App redraws the mod, and worker statuses come straight from OSC 7501.

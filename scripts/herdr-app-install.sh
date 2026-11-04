@@ -48,8 +48,37 @@ body["children"] = [c for c in body["children"] if c.get("id") != "mission-contr
     "content": {"mod": "gsd-mission-control"}}]
 main.pop("preview", None)
 main["name"] = "GSD Mission Control"
-(home / "layouts" / "gsd-mission-control.json").write_text(json.dumps(main, indent=2))
-print("layout:", home / "layouts" / "gsd-mission-control.json")
+# Other installers (herdr-agent-kit's space-groups, agent-limits) edit this
+# layout's sidebar too. Keep their edits: a block whose mod they replaced keeps
+# it, a block they added stays after the same sibling.
+out = home / "layouts" / "gsd-mission-control.json"
+def walk(n):
+    yield n
+    for c in n.get("children", []):
+        yield from walk(c)
+old = find(json.loads(out.read_text()), "sidebar") if out.exists() else None
+new = find(main, "sidebar")
+if old and new:
+    fresh = {n.get("id"): n for n in walk(new)}
+    for n in walk(old):
+        f = fresh.get(n.get("id"))
+        if f and n.get("type") == "block" and f.get("type") == "block" and n.get("content") != f.get("content"):
+            f["content"] = n["content"]
+    for n in walk(old):
+        f = fresh.get(n.get("id"))
+        if not f or "children" not in n:
+            continue
+        ids = [c.get("id") for c in f.get("children", [])]
+        for i, c in enumerate(n["children"]):
+            if c.get("id") in fresh:
+                continue
+            prev = n["children"][i - 1].get("id") if i else None
+            at = ids.index(prev) + 1 if prev in ids else 0
+            f["children"].insert(at, c)
+            ids.insert(at, c.get("id"))
+            fresh[c.get("id")] = c
+out.write_text(json.dumps(main, indent=2))
+print("layout:", out)
 PY
 
 if [[ -x "$APP" ]] || command -v "$APP" >/dev/null 2>&1; then
