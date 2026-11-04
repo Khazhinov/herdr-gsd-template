@@ -2,6 +2,8 @@
 
 The orchestration owner is declared by `owner` in `.orchestration/routing.toml`.
 
+Follow "Publication safety" in `AGENTS.md` for every change.
+
 At the start of every owner session:
 1. Read `owner` in `.orchestration/routing.toml`. If it is not `claude`, stop orchestration and follow "Owner handoff" in `.orchestration/docs/OPERATIONS.md`.
 2. Read `.agents/skills/gsd-context-discipline/SKILL.md` and `.agents/skills/orch-workers/SKILL.md`.
