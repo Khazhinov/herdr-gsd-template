@@ -85,6 +85,37 @@ program running in it); the `cwd` field is the folder the terminal was started i
 `--name` (`w-<id>`); a `where` label, when set, gives the tab caption. Closing a worker's tab ends the worker; its task stays and `collect`
 reports it.
 
+## 3.3. Owner handoff: command access and runtime
+
+`HC_TERMINAL_ID` proves inherited terminal identity, not access to the Herdr core.
+A Codex TUI can be visible in Herdr while its shell tool cannot connect to the core Unix socket.
+`--no-daemon` keeps execution in the terminal; it does not grant socket, cache or Git permissions.
+Test `hc get "$HC_TERMINAL_ID"` through the new agent's own command tool, not only in the launching
+shell. An `EPERM` socket connection followed by a systemd startup error is not proof the core is down.
+Do not restart the core or replace GSD workers with inline execution to work around this error.
+
+Before transfer, configure the target agent's explicit `gsd_runtime` in `agents.toml` or the local
+override (custom owner ids need it too). `owner set` updates GSD `config.json.runtime` along with
+`routing.toml`; other GSD settings are retained. `--launch` checks caller core access first and
+restores both files if `hc run` fails. `--force` skips only handoff freshness, not permissions.
+A launched terminal is not yet a verified owner environment. In that terminal, run the core probe,
+`orch.py hub start`, and `orch.py status --no-planning` before dispatch. Check that its Herdr tab,
+space, parent and Mission Control are visible, then verify a harmless worker start/report/collect.
+An explicit command without `--launch` only updates configuration; it cannot validate a new session.
+
+Choose a permission profile that permits the actual core socket, orchestration cache, Git metadata
+and required project commands. Keep paths and permission choices in ignored local config. Have the
+person approve permission expansion; do not install unrestricted flags as public defaults.
+Current Codex supports named permission profiles and Unix socket allow rules; support depends on
+platform and version: https://developers.openai.com/codex/config-reference . A profile change may
+require a new session; test the effective command channel again. Environment flags and a successful
+escalation request alone are not proof of socket access.
+
+Quota admission remains a separate check: `orch.py route execute` may refuse work after access is
+repaired because predicted worker spend plus the new owner's shared-account reserve is too high.
+Do not lower reserves as part of environment repair. Failed dispatch records must remain readable
+by `status`; a task left without a worker is failed, not running or complete.
+
 ## 4. Recovery after a restart
 
 - Owner session: `orch.py status` shows unfinished tasks; run `collect` for each.
@@ -99,8 +130,8 @@ Reasons: the owner runs out of its vendor quota (`orch.py advice` suggests a swi
 1. Safe boundary: tasks are collected or can keep running (the new owner collects them), review decisions are recorded.
 2. The current owner runs `/gsd-pause-work`: GSD writes `.planning/HANDOFF.json` and `.continue-here.md` and commits them.
 3. GSD for the new owner is installed with the official installer (`npx @opengsd/gsd-core@<pin> --<runtime> --local`); for Codex the guard block of `.codex/config.toml` is reviewed.
-4. `orch.py owner set <agent> --launch` checks the `owner` capability and the freshness of `HANDOFF.json` (no older than `advice.handoff_max_age_minutes`), changes `owner` in `routing.toml` and starts the new owner as a tab in the space of the calling terminal (`--space project`: the project's space, see below). `--force` skips the check if the previous owner is unavailable.
-5. The new owner runs `/gsd-resume-work` and `orch.py status`; the `routing.toml` change is committed with the handoff.
+4. `orch.py owner set <agent> --launch` checks the `owner` capability and the freshness of `HANDOFF.json` (no older than `advice.handoff_max_age_minutes`), changes `owner` in `routing.toml` and GSD `runtime` in `config.json`, and starts the new owner as a tab in the space of the calling terminal (`--space project`: the project's space, see below). `--force` skips the check if the previous owner is unavailable.
+5. The new owner runs `/gsd-resume-work` and `orch.py status`; both configuration changes are committed with the handoff.
 
 ## 5.1. Owner context hygiene
 

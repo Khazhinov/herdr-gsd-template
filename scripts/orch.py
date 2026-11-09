@@ -555,7 +555,30 @@ def cmd_owner(cfg, a):
     new, n = re.subn(r'(?m)^owner\s*=\s*"[^"]*"', f'owner = "{a.agent}"', text, count=1)
     if n != 1:
         raise SystemExit("routing.toml has no owner line")
+    gsd_path = cfg["root"] / ".planning" / "config.json"
+    gsd_original = gsd_path.read_text() if gsd_path.exists() else None
+    gsd_config = json.loads(gsd_original) if gsd_original is not None else None
+    runtime = cfg["agents"][a.agent].get("gsd_runtime")
+    if gsd_config is not None and not runtime:
+        raise SystemExit("target owner needs explicit gsd_runtime in agents.toml or agents.local.toml")
+    if a.launch:
+        # Test the caller's actual command channel before changing ownership.
+        # HC_TERMINAL_ID alone does not prove sandbox access to the core.
+        parent = os.environ.get("HC_TERMINAL_ID")
+        if parent:
+            hc.get(parent)
+        else:
+            hc.ls()
     path.write_text(new)
+    try:
+        if gsd_config is not None:
+            gsd_config["runtime"] = runtime
+            gsd_path.write_text(json.dumps(gsd_config, ensure_ascii=False, indent=2) + "\n")
+    except BaseException:
+        path.write_text(text)
+        if gsd_original is not None:
+            gsd_path.write_text(gsd_original)
+        raise
     print(f"owner: {old} -> {a.agent} (routing.toml; commit it with the handoff)")
     running = [t["id"] for t in tasks.all_tasks(cfg) if t.get("state") == "running"]
     if running:
@@ -568,13 +591,22 @@ def cmd_owner(cfg, a):
             "You are now the orchestration owner of this project "
             f"(routing.toml owner = {a.agent}). Follow the owner bootstrap in AGENTS.md, "
             "then resume with the GSD resume-work workflow "
-            "(/gsd-resume-work) and `python3 scripts/orch.py status --no-planning`."
+            "(/gsd-resume-work). Before execution, use your own shell tool to run "
+            "`hc get \"$HC_TERMINAL_ID\"`, then `python3 scripts/orch.py hub start` and "
+            "`python3 scripts/orch.py status --no-planning`. If core access is denied, "
+            "report the permission error and stop dispatch; preserve the GSD worker flow."
         )
         argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ], *ag["command"]]
         if ag.get("prompt", "arg") == "arg":
             argv.append(prompt)
         labels = {"orch.owner": a.agent}
-        res = hc.run(argv, f"owner-{a.agent}"[:32], cfg["root"], labels, outlive_parent=True)
+        try:
+            res = hc.run(argv, f"owner-{a.agent}"[:32], cfg["root"], labels, outlive_parent=True)
+        except BaseException:
+            path.write_text(text)
+            if gsd_original is not None:
+                gsd_path.write_text(gsd_original)
+            raise
         hc.show(f"owner-{a.agent}"[:32], cfg["root"], a.space or "caller")
         if ag.get("prompt") == "send":
             hc.wait(f"owner-{a.agent}"[:32], timeout=120)

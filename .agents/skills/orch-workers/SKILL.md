@@ -13,6 +13,13 @@ It owns routing, quotas, worker lifecycle and evidence. Do not start agents with
 the first message as an argument). The general scheme outside this template: herdr-agent-kit
 `concepts/herdr-launch.md` (https://github.com/Khazhinov/herdr-agent-kit/blob/main/concepts/herdr-launch.md).
 
+
+Before dispatch from a new owner runtime, run `hc get "$HC_TERMINAL_ID"` through that agent's
+own shell tool, then `orch hub start` and `orch status --no-planning`. Terminal identity and
+`--no-daemon` do not grant sandbox socket access. An inaccessible core blocks delegation;
+preserve the worker flow and report the permission error. See OPERATIONS section 3.3 for
+`gsd_runtime`, launch rollback, permission checks and the separate quota gate.
+
 ## 1. Facts you can rely on
 
 - `orch quota` shows live quota per agent. Sources: Codex app-server RPC (`official-rpc`),

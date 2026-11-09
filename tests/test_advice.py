@@ -9,11 +9,14 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 SRC = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SRC / "scripts"))
 # Claude taps of herdr-agent-kit on this machine must not reach the tests.
 os.environ["HERDR_AGENT_KIT_CACHE"] = tempfile.mkdtemp()
+import orch  # noqa: E402
 from orchlib import advice, config, quota  # noqa: E402
 
 NOW = time.time()
@@ -161,6 +164,44 @@ class Advice(unittest.TestCase):
         p = subprocess.run(cmd, capture_output=True, text=True, env=env)
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn('owner = "codex"', (self.root / ".orchestration/routing.toml").read_text())
+
+    def test_owner_launch_failure_restores_owner_and_gsd_runtime(self):
+        planning = self.root / ".planning"
+        planning.mkdir(exist_ok=True)
+        p = planning / "config.json"
+        p.write_text('{"runtime": "claude", "parallelization": true}\n')
+        before = p.read_bytes()
+        routing = self.root / ".orchestration/routing.toml"
+        routing_before = routing.read_bytes()
+        args = SimpleNamespace(agent="codex", force=True, launch=True, space="caller")
+        with mock.patch.object(orch.hc, "get"), mock.patch.object(orch.hc, "ls"), \
+             mock.patch.object(orch.hc, "run", side_effect=orch.hc.HCError("denied")):
+            with self.assertRaises(orch.hc.HCError):
+                orch.cmd_owner(self.cfg, args)
+        self.assertEqual(p.read_bytes(), before)
+        self.assertEqual(routing.read_bytes(), routing_before)
+
+    def test_owner_syncs_gsd_runtime_for_custom_agent_id(self):
+        planning = self.root / ".planning"
+        planning.mkdir(exist_ok=True)
+        p = planning / "config.json"
+        p.write_text('{"runtime": "claude", "parallelization": true}\n')
+        self.cfg["agents"]["alternate-owner"] = self.cfg["agents"]["codex"]
+        args = SimpleNamespace(agent="alternate-owner", force=True, launch=False)
+        orch.cmd_owner(self.cfg, args)
+        self.assertEqual(json.loads(p.read_text()), {"runtime": "codex", "parallelization": True})
+
+    def test_owner_core_preflight_failure_does_not_change_files(self):
+        routing = self.root / ".orchestration/routing.toml"
+        before = routing.read_bytes()
+        args = SimpleNamespace(agent="codex", force=True, launch=True)
+        with mock.patch.dict(os.environ, {"HC_TERMINAL_ID": "test-parent"}), \
+             mock.patch.object(orch.hc, "get", side_effect=orch.hc.HCError("EPERM")), \
+             mock.patch.object(orch.hc, "run") as launch:
+            with self.assertRaises(orch.hc.HCError):
+                orch.cmd_owner(self.cfg, args)
+        launch.assert_not_called()
+        self.assertEqual(routing.read_bytes(), before)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 # Agent registry: every coding runtime the scheduler may start.
 #
 # The scheduler never branches on an agent id. It reads only these fields:
+#   gsd_runtime    explicit GSD runtime for an owner (also for custom agent ids)
 #   command        argv started through `hc run` (the task prompt is appended
 #                  when prompt = "arg", or sent after readiness when "send")
 #   worktree_args  extra argv for runs inside a git worktree; {git_common_dir}
@@ -23,6 +24,7 @@
 # the public default must stay safe (see docs/SECURITY in OPERATIONS.md).
 
 [agents.claude]
+gsd_runtime = "claude"
 command = ["claude"]
 prompt = "arg"
 compact_command = "/compact"
@@ -34,6 +36,7 @@ stability = "supported"
 max_parallel = 2
 
 [agents.codex]
+gsd_runtime = "codex"
 # --no-daemon is mandatory under herdr-core: without it Codex executes
 # commands in its shared daemon, outside the hc terminal.
 command = ["codex", "--no-daemon"]

@@ -561,6 +561,11 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(tasks.load_task(c, "bad-launch")["state"], "failed")
         self.assertFalse(tasks.wt_paths(c, "bad-launch")[0].exists())
         self.assertEqual(tasks.ledger()["entries"], [])
+        self.assertIsNone(next(t for t in tasks.refresh(c, []) if t["id"] == "bad-launch")["sentinel"])
+        legacy = tasks.load_task(c, "bad-launch")
+        legacy.pop("report")
+        tasks.save_task(c, legacy)
+        self.assertIsNone(next(t for t in tasks.refresh(c, []) if t["id"] == "bad-launch")["sentinel"])
 
     def test_pending_uses_earliest_account_start_once(self):
         c = config.load(self.repo)

@@ -22,6 +22,8 @@ if hc server status --json >/dev/null 2>&1; then
   [[ -n ${HC_TERMINAL_ID:-} ]] && echo "this terminal: $HC_TERMINAL_ID" || { ((QUIET)) || echo "not inside an hc terminal: workers will have no parent"; }
 else
   echo "core: NOT reachable; workers cannot start" >&2
+  echo "Run hc get from inside the new owner agent command tool; check sandbox socket access (OPERATIONS 3.3)." >&2
+  exit 5
 fi
 
 # Codex runs shell commands through its own binary inside bwrap; a permission

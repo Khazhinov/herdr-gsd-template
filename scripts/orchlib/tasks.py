@@ -568,7 +568,8 @@ def dispatch(
         if created and Path(cwd).exists():
             with suppress(Exception):  # best effort: the launch error is what matters
                 wt_remove(cfg, cwd)
-        save_task(cfg, {"id": tid, "state": "failed", "error": str(exc), "agent": aid})
+        save_task(cfg, {"id": tid, "state": "failed", "error": str(exc), "agent": aid,
+                        "role": role, "report": str(report)})
         raise
 
 
@@ -794,6 +795,6 @@ def refresh(cfg, terminals=None):
             "msg": st.get("msg") if isinstance(st, dict) else None,
             "address": (term or {}).get("address"),
         }
-        t["sentinel"] = report_sentinel(t["report"])
+        t["sentinel"] = report_sentinel(t["report"]) if t.get("report") else None
         out.append(t)
     return out
