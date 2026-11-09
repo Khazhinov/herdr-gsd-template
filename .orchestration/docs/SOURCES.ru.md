@@ -27,6 +27,9 @@
 | GSD 1.19: проверка ключей конфигурации `isValidConfigKey` | `bin/lib/config-schema.cjs` |
 | hc: Codex должен работать с `--no-daemon` | `hc --skill` |
 | hc: терминалы получают окружение ядра; дети завершаются с родителем без `--outlive-parent` | `hc --skill`, `hc run --help`, наблюдение |
+| hc: `hc run` изнутри терминала делает вызывающий терминал родителем; `hc wait --children any` возвращается на следующем событии потомка | `hc --skill`, `hc run --help` |
+| hc: текущая папка терминала - `foreground.cwd` из `hc get`; поле `cwd` - папка запуска | `hc --skill`, наблюдение |
+| hc: старый мультиплексор Herdr (`herdr agent\|pane\|tab\|workspace`) не входит в herdr-core | `hc --skill`, наблюдение 2026-11-09 |
 | hc: `doc.get/doc.set`, `events.subscribe` (включая события `doc`, `labels`, `status`) | `hc schema` |
 | Herdr App: моды перерисовываются при изменении `terminals()`; `readTextFile({on})`, `exec({on})` | `herdr.d.ts`, `AGENTS.md` приложения |
 | Herdr App: в API модов нет функции буфера обмена | `herdr.d.ts` |

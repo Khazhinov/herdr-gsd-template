@@ -8,7 +8,7 @@ dispatch TASK.md --role R --id ID start a worker (execute -> own worktree)
 wait [--timeout S]                wait for worker news (hc wait --children any)
 collect ID [--keep-worker]        judge durable evidence, stop the worker
 status [--json]                   tasks, quotas, routing
-watch                             live dashboard + publisher (run in a Herdr pane)
+watch                             live dashboard + publisher (run in an hc terminal)
 hub start|stop|restart            run `watch` in its own herdr-core terminal
 worktree create|merge|remove|path ID
 statusline-tap -- CMD...          Claude statusline wrapper that records rate limits

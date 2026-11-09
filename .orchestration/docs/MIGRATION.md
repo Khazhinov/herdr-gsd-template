@@ -6,7 +6,7 @@ English | [Русский](MIGRATION.ru.md)
 
 | v0.1 | v0.2 |
 |---|---|
-| Herdr TUI, `herdr agent ...` | herdr-core `hc`, Herdr App is optional |
+| Herdr TUI, `herdr agent ...` (removed, every `herdr ...` command is obsolete) | herdr-core `hc`, Herdr App is optional |
 | persistent `peer-review`, `peer-code`, `peer-exec` | one-shot worker `w-<id>` per task |
 | `/clear` and restart to change cwd | a new process with `--cwd` |
 | `scripts/codex-limits.py`, 30% threshold | `orch.py quota` for all agents, reserves in `routing.toml` |

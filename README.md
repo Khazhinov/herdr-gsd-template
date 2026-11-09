@@ -41,12 +41,47 @@ Verified on **2026-11-02** (Windows 11 + Herdr App 0.1.11 -> WSL2 Ubuntu 24.04):
 | Node.js / npm | `>= 24` / `>= 10` (GSD requirement) |
 | Python | `>= 3.11` (`tomllib`) |
 
-v0.2 does not use the legacy Herdr TUI (`herdr agent ...`). Moving from v0.1: [MIGRATION](.orchestration/docs/MIGRATION.md).
+The old Herdr terminal multiplexer (`herdr agent|pane|tab|workspace`) is not used: any instruction with a `herdr ...`
+command is obsolete, and only herdr-core `hc` is required. Moving from v0.1: [MIGRATION](.orchestration/docs/MIGRATION.md).
 
 ```bash
 ./scripts/version-check.py --strict
 ./scripts/doctor.sh
 ```
+
+## Quick start
+
+### For a person
+
+1. Install Git, Python, Node.js, herdr-core (`hc`), Claude Code and, as the preferred executor, the Codex CLI
+   (versions: Verified baseline above). Herdr App is optional: with it every worker gets its own tab.
+2. Create the project (New project) or lay the template over a repository (Existing repository); both end
+   with `./scripts/bootstrap.sh`.
+3. Open a terminal inside the project in Herdr App and start `claude` there; the first prompt is in New project.
+   A terminal opened from the App carries the `herdr.space` label, so workers land in the same space.
+4. Workers appear as tabs `w-<id>` next to the owner (space rules: [OPERATIONS 3.2](.orchestration/docs/OPERATIONS.md)).
+   Without the App: `hc ls`, `hc attach w-<id>`, `python3 scripts/orch.py watch`.
+5. A worker that waits for a person (`blocked`, or `startup.ok: false` after `dispatch`) shows a dialog in its tab:
+   answer it there. The owner never answers permission dialogs for you.
+6. Results: the owner collects them with `orch.py collect <id>`; the report path is in the task contract,
+   a copy goes to `.orchestration/runtime/reports/`.
+
+### For the owner agent
+
+1. Follow the start steps of `.claude/CLAUDE.md` (owner check, skills, `doctor`, `hub start`, `status`).
+2. Check the environment: `$HC_TERMINAL_ID` is set and `hc get "$HC_TERMINAL_ID"` shows the `herdr.space` label;
+   without the label workers go to the project's space.
+3. Start workers only with `orch.py dispatch`, never with a raw `hc run` and never with `herdr ...`. `dispatch`
+   already does what herdr-core needs: background start under the owner terminal, `--outlive-parent`,
+   the caller's environment through `env`, `codex --no-daemon`, the space label and the start check.
+4. Wait with `orch.py wait` (it wraps `hc wait --children any`); a timeout is a check-in, wait again.
+   No `sleep` and no polling with `hc get`, `ps` or `tail`.
+5. `orch.py collect <id>`: success is the report sentinel plus, for execution, commits on a clean branch;
+   the worker status `done` or `idle` is not success. The full loop: [orch-workers](.agents/skills/orch-workers/SKILL.md).
+
+The general scheme of launching agents through `hc` outside this template (environment check, space and tab
+choice, start flags, start checks, waiting, cleanup) is described once in herdr-agent-kit:
+[Launching agents in herdr-core](https://github.com/Khazhinov/herdr-agent-kit/blob/main/concepts/herdr-launch.md).
 
 ## Architecture
 

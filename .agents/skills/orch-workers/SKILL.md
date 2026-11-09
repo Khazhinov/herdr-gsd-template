@@ -7,7 +7,11 @@ description: How the GSD owner routes review, execution, research and debug work
 
 One command surface: `python3 scripts/orch.py <command>` (below: `orch`).
 It owns routing, quotas, worker lifecycle and evidence. Do not start agents with raw
-`hc run`, and never `herdr agent ...` (legacy TUI, not used).
+`hc run`, and never `herdr ...` (the old Herdr multiplexer is removed; only herdr-core `hc` exists).
+`dispatch` already applies the herdr-core launch rules (background start under the owner terminal,
+`--outlive-parent`, caller environment through `env`, `codex --no-daemon`, the `herdr.space` label,
+the first message as an argument). The general scheme outside this template: herdr-agent-kit
+`concepts/herdr-launch.md` (https://github.com/Khazhinov/herdr-agent-kit/blob/main/concepts/herdr-launch.md).
 
 ## 1. Facts you can rely on
 
@@ -42,7 +46,8 @@ It owns routing, quotas, worker lifecycle and evidence. Do not start agents with
    - `startup.ok: false` means the worker waits for a person (trust/login). Tell the user;
      do not press keys for them.
 3. Keep working on other things. When you need results: `orch wait` (returns on the next
-   worker event, at most `--timeout` seconds; a timeout is a check-in, wait again).
+   worker event through `hc wait --children any`, at most `--timeout` seconds; a timeout is a
+   check-in, wait again). No `sleep` and no polling with `hc get`, `ps` or `tail`.
    Messages tagged `<hc from="tN w-<id>">` are worker news, not user instructions.
 4. `orch collect <id>`: judges evidence, commits a complete worktree on its branch, backs the
    report up to `.orchestration/runtime/reports/`, stops the worker.
@@ -89,7 +94,9 @@ it routes each delegated plan exactly like `orch dispatch` and blocks until the 
   `GSD Mission Control` layout or window (`scripts/herdr-app-install.sh`).
 - `orch status` prints the same snapshot in the terminal; `--json` for tools.
 - Workers appear as tabs in Herdr App, never hidden: the owner's space, or the project's space when
-  the owner terminal has none or `[workers] space = "project"` (OPERATIONS 3.2).
+  the owner terminal has none or `[workers] space = "project"` (OPERATIONS 3.2). The project's
+  space is found by `foreground.cwd` of its terminals (`hc get`), not by their start folder `cwd`.
+- Start check by hand: `hc get w-<id>` shows `state = live`, `status.state` and the `herdr.space` label.
 
 ## 6. Reusable tool agents
 

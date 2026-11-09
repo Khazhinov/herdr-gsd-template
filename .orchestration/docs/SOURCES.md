@@ -27,6 +27,9 @@ Community (in Russian):
 | GSD 1.19: configuration key check `isValidConfigKey` | `bin/lib/config-schema.cjs` |
 | hc: Codex must run with `--no-daemon` | `hc --skill` |
 | hc: terminals get the core's environment; children exit with the parent without `--outlive-parent` | `hc --skill`, `hc run --help`, observation |
+| hc: `hc run` from inside a terminal makes the caller the parent; `hc wait --children any` returns on the next child event | `hc --skill`, `hc run --help` |
+| hc: the live folder of a terminal is `foreground.cwd` of `hc get`; the `cwd` field is the start folder | `hc --skill`, observation |
+| hc: the old Herdr multiplexer (`herdr agent\|pane\|tab\|workspace`) is not part of herdr-core | `hc --skill`, observation 2026-11-09 |
 | hc: `doc.get/doc.set`, `events.subscribe` (including `doc`, `labels`, `status` events) | `hc schema` |
 | Herdr App: mods redraw when `terminals()` changes; `readTextFile({on})`, `exec({on})` | `herdr.d.ts`, the app's `AGENTS.md` |
 | Herdr App: the mod API has no clipboard call | `herdr.d.ts` |

@@ -6,7 +6,7 @@
 
 | v0.1 | v0.2 |
 |---|---|
-| Herdr TUI, `herdr agent ...` | herdr-core `hc`, Herdr App необязателен |
+| Herdr TUI, `herdr agent ...` (удалён, любая команда `herdr ...` устарела) | herdr-core `hc`, Herdr App необязателен |
 | постоянные `peer-review`, `peer-code`, `peer-exec` | одноразовый воркер `w-<id>` на задачу |
 | `/clear` и перезапуск для смены cwd | новый процесс с `--cwd` |
 | `scripts/codex-limits.py`, порог 30% | `orch.py quota` для всех агентов, резервы в `routing.toml` |

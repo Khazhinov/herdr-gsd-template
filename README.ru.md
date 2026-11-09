@@ -41,12 +41,47 @@
 | Node.js / npm | `>= 24` / `>= 10` (требование GSD) |
 | Python | `>= 3.11` (`tomllib`) |
 
-Legacy Herdr TUI (`herdr agent ...`) в v0.2 не используется. Переход с v0.1 - [MIGRATION](.orchestration/docs/MIGRATION.ru.md).
+Старый терминальный мультиплексор Herdr (`herdr agent|pane|tab|workspace`) не используется: любая инструкция с командой
+`herdr ...` устарела, требуется только herdr-core `hc`. Переход с v0.1 - [MIGRATION](.orchestration/docs/MIGRATION.ru.md).
 
 ```bash
 ./scripts/version-check.py --strict
 ./scripts/doctor.sh
 ```
+
+## Быстрый старт
+
+### Для человека
+
+1. Установить Git, Python, Node.js, herdr-core (`hc`), Claude Code и, как приоритетного исполнителя, Codex CLI
+   (версии - раздел «Проверенный baseline»). Herdr App необязателен: с ним каждый воркер получает свою вкладку.
+2. Создать проект (раздел «Новый проект») или наложить шаблон на репозиторий (раздел «Существующий репозиторий»);
+   оба пути заканчиваются `./scripts/bootstrap.sh`.
+3. Открыть в Herdr App терминал внутри проекта и запустить в нём `claude`; первый запрос - в разделе «Новый проект».
+   Терминал, открытый из App, несёт метку `herdr.space`, поэтому воркеры попадают в тот же space.
+4. Воркеры появляются вкладками `w-<id>` рядом с владельцем (правила выбора space - [OPERATIONS 3.2](.orchestration/docs/OPERATIONS.ru.md)).
+   Без App: `hc ls`, `hc attach w-<id>`, `python3 scripts/orch.py watch`.
+5. Воркер, ожидающий человека (`blocked` или `startup.ok: false` после `dispatch`), показывает диалог в своей вкладке:
+   ответ даётся там. Владелец не подтверждает диалоги разрешений за человека.
+6. Результаты собирает владелец командой `orch.py collect <id>`; путь отчёта указан в контракте задачи,
+   копия сохраняется в `.orchestration/runtime/reports/`.
+
+### Для агента-владельца
+
+1. Выполнить стартовые шаги `.claude/CLAUDE.md` (проверка владельца, скиллы, `doctor`, `hub start`, `status`).
+2. Проверить среду: `$HC_TERMINAL_ID` задан, `hc get "$HC_TERMINAL_ID"` показывает метку `herdr.space`;
+   без метки воркеры уходят в space проекта.
+3. Запускать воркеров только через `orch.py dispatch`, без прямого `hc run` и без `herdr ...`. `dispatch`
+   уже выполняет требования herdr-core: фоновый запуск под терминалом владельца, `--outlive-parent`,
+   окружение вызывающего через `env`, `codex --no-daemon`, метку space и проверку запуска.
+4. Ждать через `orch.py wait` (обёртка над `hc wait --children any`); тайм-аут - контрольная точка, ожидание повторяется.
+   `sleep` и опрос через `hc get`, `ps`, `tail` не применяются.
+5. `orch.py collect <id>`: успех - маркер отчёта и, для исполнения, коммиты на чистой ветке;
+   статус воркера `done` или `idle` успехом не является. Полный цикл - [orch-workers](.agents/skills/orch-workers/SKILL.md).
+
+Общая схема запуска агентов через `hc` вне шаблона (проверка среды, выбор space и вкладки, флаги запуска,
+проверка запуска, ожидание, очистка) описана один раз в herdr-agent-kit:
+[Запуск агентов в herdr-core](https://github.com/Khazhinov/herdr-agent-kit/blob/main/concepts/herdr-launch.ru.md).
 
 ## Архитектура
 

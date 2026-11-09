@@ -49,6 +49,11 @@ quota_static = {remaining_percent = 100}
 the project root trust dialog (first agent start in the project), account login.
 A human answers in Herdr App or with `hc attach w-<id>`. The owner never presses keys for the human.
 
+Manual check of a started worker: `hc get w-<id>` shows `state = live`, a `status.state` value (the agent reports it
+over OSC 7501 once its interface is up) and the `herdr.space` label (the tab exists in the App). For a direct
+`hc run` the JSON output also has `first_message.sent`; `dispatch` passes the first message as an argument, so
+it is not lost while the agent loads.
+
 A `blocked` status during work means a permission request. It is visible in the App, the dashboard and the `orch.py wait` output.
 
 ## 3.1. Codex worker fails with `bwrap: execvp .../codex`
@@ -75,7 +80,9 @@ With `[workers] show_in_app = true` every worker and a launched owner get a tab;
 
 The App stores its layout in the core document `herdr-app`; a terminal labelled `herdr.space=<id>`
 gets a tab there. The stored `folder` of a space is where it was created and does not follow `cd`,
-so it is only a fallback. Closing a worker's tab ends the worker; its task stays and `collect`
+so it is only a fallback. The live folder of a terminal is `foreground.cwd` from `hc get` (the folder of the
+program running in it); the `cwd` field is the folder the terminal was started in. The tab name comes from
+`--name` (`w-<id>`); a `where` label, when set, gives the tab caption. Closing a worker's tab ends the worker; its task stays and `collect`
 reports it.
 
 ## 4. Recovery after a restart

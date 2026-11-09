@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.9 - 2026-11-09
+
+- Documentation: a quick start for a person and for the owner agent in both READMEs (what to install,
+  first command, where worker tabs appear, how to wait and collect); the general launch scheme
+  through `hc` is referenced in herdr-agent-kit (`concepts/herdr-launch.md`), not repeated.
+- Documentation: the old Herdr multiplexer (`herdr agent|pane|tab|workspace`) is marked removed;
+  OPERATIONS and orch-workers describe `foreground.cwd` versus `cwd`, the tab name and `where`
+  caption, the manual start check (`state`, `status.state`, `herdr.space`, `first_message.sent`) and
+  waiting only through `hc wait --children any`; SOURCES lists these facts.
+
 ## 0.2.8 - 2026-11-04
 
 - Mission Control hides its per-window limits while herdr-agent-kit's `agent-limits` mod is shown
