@@ -111,6 +111,20 @@ session keeps its old profile. `scripts/doctor.sh` checks `codex sandbox -- hc l
 the change; keep machine paths in ignored local config. Environment variables and an escalation request
 are not proof of access: only the probe is.
 
+A plain `codex` attaches to the shared app-server daemon when one runs. The daemon executes commands
+with the environment of the terminal that started it: another project's `HC_TERMINAL_ID`, its sandbox,
+its `PATH`; a nested `codex sandbox` then fails with `app-server socket directory must be a user-owned
+directory with mode 0700`. `orch.py` and `doctor.sh` detect the daemon among parent processes and stop
+with exit code 6. Fix: `[features] daemon_auto_start = false` in `~/.codex/config.toml`, stop the
+daemon once, restart Codex; `codex --no-daemon` does the same for one session.
+
+Codex owner commands write quota ledgers and locks to `~/.cache/herdr-orch` (`ORCH_CACHE_DIR`).
+A profile that allows writes only in the workspace makes them fail with `Read-only file system`.
+Allow writes to that folder (and to `~/.cache/herdr-agent-kit` for `tool-ask`) in the active profile
+(`"~/.cache/herdr-orch" = "write"` under `[permissions.<profile>.filesystem]`). `doctor.sh` checks the
+write from the current command tool and, outside Codex, through `codex sandbox`; inside a Codex session
+it skips the nested `codex sandbox` checks.
+
 Quota admission remains a separate check: `orch.py route execute` may refuse work after access is
 repaired because predicted worker spend plus the new owner's shared-account reserve is too high.
 Do not lower reserves as part of environment repair. Failed dispatch records must remain readable
@@ -131,7 +145,8 @@ Reasons: the owner runs out of its vendor quota (`orch.py advice` suggests a swi
 2. The current owner runs `/gsd-pause-work`: GSD writes `.planning/HANDOFF.json` and `.continue-here.md` and commits them.
 3. GSD for the new owner is installed with the official installer (`npx @opengsd/gsd-core@<pin> --<runtime> --local`); for Codex the guard block of `.codex/config.toml` is reviewed.
 4. `orch.py owner set <agent> --launch` checks the `owner` capability and the freshness of `HANDOFF.json` (no older than `advice.handoff_max_age_minutes`), changes `owner` in `routing.toml` and GSD `runtime` in `config.json`, and starts the new owner as a tab in the space of the calling terminal (`--space project`: the project's space, see below). `--force` skips the check if the previous owner is unavailable.
-5. The new owner runs `/gsd-resume-work` and `orch.py status`; both configuration changes are committed with the handoff.
+   Without `--launch` the command only changes both files; the person then starts the new owner with a plain `claude` or `codex` in a project terminal, and its bootstrap does the rest. An agent started while it is not the owner only reports the current owner and changes nothing.
+5. The new owner runs `orch.py hub start` (it restarts a hub whose configuration or code changed since its start), `/gsd-resume-work` and `orch.py status`; both configuration changes are committed with the handoff.
 
 ## 5.1. Owner context hygiene
 

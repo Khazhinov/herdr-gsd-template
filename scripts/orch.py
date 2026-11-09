@@ -475,11 +475,24 @@ def cmd_watch(cfg, a):
             rpc = None
 
 
+def hub_stale(cfg, address):
+    started = (hc.get(address).get("created_ms") or 0) / 1000
+    root = cfg["root"]
+    files = [*(root / ".orchestration").glob("*.toml"), *(root / "scripts").glob("orch*.py"),
+             *(root / "scripts" / "orchlib").glob("*.py")]
+    return any(f.stat().st_mtime > started for f in files)
+
+
 def cmd_hub(cfg, a):
     """Run `watch` in its own hidden herdr-core terminal: the publisher that
     feeds the Herdr App mod. It outlives the owner session."""
     name = f"orch-{config.project_name(cfg)}"[:32]
     live = [t for t in hc.ls() if t.get("name") == name]
+    # The hub reads configuration and code once: after `owner set`, a local
+    # override or a template update it would keep publishing the old state.
+    if a.op == "start" and live and hub_stale(cfg, live[0]["address"]):
+        print(f"{name}: configuration or code changed since start; restarting")
+        a.op = "restart"
     if a.op in ("stop", "restart"):
         for t in live:
             hc.kill(t["address"])
@@ -689,6 +702,9 @@ def main(argv=None):
     a = ap.parse_args(argv)
     if a.cmd == "statusline-tap":
         return cmd_statusline_tap(a)
+    if hc.codex_daemon():
+        print(f"error: {hc.DAEMON_HINT}", file=sys.stderr)
+        return 6
     try:
         cfg = config.load(a.root)
     except config.ConfigError as e:

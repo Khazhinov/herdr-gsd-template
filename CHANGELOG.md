@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.12 - 2026-11-09
+
+- `orch.py` and `doctor.sh` stop with exit code 6 when a command runs inside the shared Codex
+  app-server daemon (a plain `codex` without `--no-daemon`), which carries another terminal's
+  `HC_TERMINAL_ID`, sandbox and `PATH`.
+- `doctor.sh` checks that the orchestration cache is writable, also through `codex sandbox`; inside a
+  Codex session it skips the nested `codex sandbox` checks, which always fail there.
+- `orch.py hub start` restarts a hub whose configuration or code changed after it started; before, a
+  hub kept the old owner and routes after `owner set` or a template update.
+- Mission Control runs `orch.py` through a login shell: a hub restarted from the App had no
+  `~/.local/bin` in `PATH`, and every route showed NONE.
+- OPERATIONS 3.3 and 5: the Codex daemon, the writable cache, a handoff with a plain agent start.
+
 ## 0.2.11 - 2026-11-09
 
 - `orch-workers`: the end of a turn shows as `done` or as `idle` in any runtime; the 0.2.10 note that

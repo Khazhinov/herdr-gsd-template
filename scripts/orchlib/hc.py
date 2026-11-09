@@ -16,6 +16,30 @@ class HCError(Exception):
         self.kind, self.code = kind, code
 
 
+DAEMON_HINT = (
+    "this command runs inside the shared Codex app-server daemon, with the environment of the "
+    "terminal that started the daemon (wrong HC_TERMINAL_ID, sandbox, PATH). Restart Codex "
+    "with `codex --no-daemon`, or set `features.daemon_auto_start = false` and stop the daemon "
+    "(OPERATIONS 3.3)"
+)
+
+
+def codex_daemon():
+    """True when an ancestor process is the Codex app-server daemon (Linux /proc)."""
+    pid = os.getppid()
+    while pid > 1:
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                argv = f.read().split(b"\0")
+            with open(f"/proc/{pid}/stat") as f:
+                pid = int(f.read().rsplit(")", 1)[1].split()[1])
+        except (OSError, ValueError, IndexError):
+            return False
+        if b"codex" in argv[0] and b"app-server" in b" ".join(argv):
+            return True
+    return False
+
+
 def binary():
     return os.environ.get("ORCH_HC", "hc").split()
 

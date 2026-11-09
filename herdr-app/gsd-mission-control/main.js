@@ -139,7 +139,9 @@ export default class MissionControl extends View {
     const data = this.states[hub.address]?.data;
     if (!data) return;
     cx.spawn(async (cx) => {
-      const r = await exec("python3", [`${data.root}/scripts/orch.py`, ...args], { cwd: data.root, on: machineOf(hub.address) });
+      // Login shell: the App's own PATH lacks ~/.local/bin, and a hub started
+      // with it cannot find agent binaries (every route shows NONE).
+      const r = await exec("bash", ["-lc", 'exec python3 "$0" "$@"', `${data.root}/scripts/orch.py`, ...args], { cwd: data.root, on: machineOf(hub.address) });
       if (r.code !== 0) notify({ title: "orch.py failed", body: (r.stderr || r.stdout).slice(-300), level: "error" });
       cx.notify();
     });

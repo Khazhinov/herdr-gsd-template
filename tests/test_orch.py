@@ -697,6 +697,31 @@ class ShellChecks(unittest.TestCase):
         rm.assert_called_once_with("old-hub")
         run.assert_called_once()
 
+    def test_hub_start_restarts_only_a_stale_publisher(self):
+        import orch
+        from types import SimpleNamespace
+
+        c = config.load(SRC)
+        old = {"name": f"orch-{config.project_name(c)}"[:32], "address": "old-hub"}
+        for created, restarted in ((0, True), (4e12, False)):
+            with mock.patch.object(hc, "ls", return_value=[old]), \
+                 mock.patch.object(hc, "get", return_value={"created_ms": created}), \
+                 mock.patch.object(hc, "kill") as kill, mock.patch.object(hc, "rm"), \
+                 mock.patch.object(orch.advice, "update"), \
+                 mock.patch.object(hc, "run", return_value={"address": "new-hub"}) as run, \
+                 redirect_stdout(io.StringIO()):
+                self.assertEqual(orch.cmd_hub(c, SimpleNamespace(op="start")), 0)
+            self.assertEqual(kill.called, restarted)
+            self.assertEqual(run.called, restarted)
+
+    def test_codex_daemon_is_found_among_ancestors(self):
+        probe = f"import sys; sys.path.insert(0, {str(SRC / 'scripts')!r}); from orchlib import hc; print(hc.codex_daemon())"
+        inner = f"{sys.executable} -c {json.dumps(probe)}; true"
+        for argv0, expected in (("codex app-server --listen unix://", "True"), ("codex --no-daemon", "False")):
+            out = subprocess.run(["bash", "-c", f'exec -a "{argv0}" bash -c {json.dumps(inner)}'],
+                                 capture_output=True, text=True).stdout.strip()
+            self.assertEqual(out, expected)
+
     def test_self_check_preserves_pycache_and_installer_accepts_worktree(self):
         script = (SRC / "scripts/self-check.sh").read_text()
         self.assertIn("PYTHONDONTWRITEBYTECODE=1", script)
