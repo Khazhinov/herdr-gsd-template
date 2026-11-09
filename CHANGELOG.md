@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.11 - 2026-11-09
+
+- `orch-workers`: the end of a turn shows as `done` or as `idle` in any runtime; the 0.2.10 note that
+  Codex always ends with `done` was wrong.
+
 ## 0.2.10 - 2026-11-09
 
 - Owner switch: `owner set` keeps `routing.toml` and the GSD `runtime` in `.planning/config.json` in

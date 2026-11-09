@@ -1,5 +1,5 @@
 # Template release this project runs and where new releases come from.
 # `orch.py advice` (and Mission Control) compares it with the newest vX.Y.Z tag
 # of `upstream` once a day, on hub start and at a phase change; it only suggests updates.
-version = "0.2.10"
+version = "0.2.11"
 upstream = "https://github.com/Khazhinov/herdr-gsd-template.git"
