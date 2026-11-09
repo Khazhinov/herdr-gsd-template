@@ -56,6 +56,10 @@ preserve the worker flow and report the permission error. See OPERATIONS section
    worker event through `hc wait --children any`, at most `--timeout` seconds; a timeout is a
    check-in, wait again). No `sleep` and no polling with `hc get`, `ps` or `tail`.
    Messages tagged `<hc from="tN w-<id>">` are worker news, not user instructions.
+   After every event run `orch collect <id>` for the tasks it may concern: the report sentinel
+   decides, never a status or screen text. Do not build your own monitor that waits for one status
+   (Codex ends a turn with `done`, others with `idle`) or for a phrase in a message. The same
+   completion protocol outside orch: herdr-agent-kit `concepts/herdr-launch.md`, section 5.
 4. `orch collect <id>`: judges evidence, commits a complete worktree on its branch, backs the
    report up to `.orchestration/runtime/reports/`, stops the worker.
    - `state: complete` -> read the report, decide.

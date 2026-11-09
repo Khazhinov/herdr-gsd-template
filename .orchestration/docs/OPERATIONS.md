@@ -103,13 +103,13 @@ A launched terminal is not yet a verified owner environment. In that terminal, r
 space, parent and Mission Control are visible, then verify a harmless worker start/report/collect.
 An explicit command without `--launch` only updates configuration; it cannot validate a new session.
 
-Choose a permission profile that permits the actual core socket, orchestration cache, Git metadata
-and required project commands. Keep paths and permission choices in ignored local config. Have the
-person approve permission expansion; do not install unrestricted flags as public defaults.
-Current Codex supports named permission profiles and Unix socket allow rules; support depends on
-platform and version: https://developers.openai.com/codex/config-reference . A profile change may
-require a new session; test the effective command channel again. Environment flags and a successful
-escalation request alone are not proof of socket access.
+Cause and fix of `EPERM`: the agent's sandbox has the network off, and local Unix sockets are blocked
+with it. For Codex turn the network on in the active permission profile
+(`[permissions.<profile>.network] enabled = true`); an allow rule for the socket alone
+(`network.unix_sockets`) is not enough (checked with Codex 0.167 on Linux). Restart the agent: a running
+session keeps its old profile. `scripts/doctor.sh` checks `codex sandbox -- hc ls`. Have the person approve
+the change; keep machine paths in ignored local config. Environment variables and an escalation request
+are not proof of access: only the probe is.
 
 Quota admission remains a separate check: `orch.py route execute` may refuse work after access is
 repaired because predicted worker spend plus the new owner's shared-account reserve is too high.

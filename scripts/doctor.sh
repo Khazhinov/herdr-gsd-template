@@ -32,6 +32,13 @@ if command -v codex >/dev/null && grep -q '^quota = "codex"' .orchestration/agen
   echo "== codex sandbox =="
   if err=$(codex sandbox -- /bin/true 2>&1); then
     echo "codex sandbox: OK"
+    if hc_err=$(codex sandbox -- hc ls --json 2>&1 >/dev/null); then
+      echo "codex sandbox -> herdr-core: OK"
+    else
+      echo "codex sandbox -> herdr-core: FAIL: ${hc_err##*$'\n'}" >&2
+      echo "Codex commands cannot reach the core socket: turn the network on in its permission profile (OPERATIONS 3.3)" >&2
+      exit 5
+    fi
   else
     echo "codex sandbox: FAIL: ${err##*$'\n'}" >&2
     echo "see .orchestration/docs/OPERATIONS.md, section 3.1" >&2

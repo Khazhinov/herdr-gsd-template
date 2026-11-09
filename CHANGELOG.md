@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.10 - 2026-11-09
+
+- Owner switch: `owner set` keeps `routing.toml` and the GSD `runtime` in `.planning/config.json` in
+  step (explicit `gsd_runtime` per agent), checks the caller's access to the core before the change
+  and restores both files when the launch fails; a failed dispatch stays readable in `status`.
+- Codex access to herdr-core: `hc` failing with `Operation not permitted` names the cause (the agent's
+  sandbox has the network off, which blocks local sockets) and the fix (OPERATIONS 3.3);
+  `doctor.sh` checks `codex sandbox -- hc ls` and fails when the core is unreachable.
+- Workers get `HOME` with the passed variables.
+- `orch-workers`: completion is decided by `orch collect` and the report sentinel, never by one
+  status or a phrase; Codex ends a turn with `done`, others with `idle`.
+
 ## 0.2.9 - 2026-11-09
 
 - Documentation: a quick start for a person and for the owner agent in both READMEs (what to install,

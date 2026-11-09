@@ -83,7 +83,7 @@ worktree_root = ".orchestration/worktrees"
 branch_prefix = "orch/"
 # Caller environment carried into workers (herdr-core starts programs with
 # its own environment, which often lacks ~/.local/bin and proxies).
-pass_env = ["PATH", "LANG", "LC_ALL", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy",
+pass_env = ["PATH", "HOME", "LANG", "LC_ALL", "ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy",
             "HTTPS_PROXY", "https_proxy", "NO_PROXY", "no_proxy", "HERDR_AGENT_KIT",
             "HERDR_TOOL_AGENTS"]
 

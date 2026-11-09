@@ -23,6 +23,7 @@ SENTINELS = ("Result: complete", "Result: incomplete", "Major issue: yes", "Majo
 OK_SENTINELS = ("Result: complete", "Major issue: no")
 DEFAULT_PASS_ENV = [
     "PATH",
+    "HOME",
     "LANG",
     "LC_ALL",
     "ALL_PROXY",

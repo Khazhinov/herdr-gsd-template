@@ -29,9 +29,11 @@ def call(*args, check=True, timeout=None):
             kind = json.loads(p.stderr).get("error", {}).get("kind")
         except (json.JSONDecodeError, AttributeError):
             pass
-        raise HCError(
-            f"hc {' '.join(args)}: rc={p.returncode} {p.stderr.strip()[:400]}", kind, p.returncode
-        )
+        msg = f"hc {' '.join(args)}: rc={p.returncode} {p.stderr.strip()[:400]}"
+        if "Operation not permitted" in p.stderr:
+            msg += ("\nthis agent's sandbox blocks the herdr-core socket: turn the network on in its "
+                    "permission profile and restart it (OPERATIONS 3.3); the core itself is running")
+        raise HCError(msg, kind, p.returncode)
     out = p.stdout.strip()
     if out.startswith(("{", "[")):
         try:
