@@ -5,6 +5,27 @@ cd "$ROOT"
 QUIET=0
 [[ ${1:-} == --quiet ]] && QUIET=1
 
+# Exit codes: 4 Codex sandbox, 5 herdr-core access, 6 Codex daemon,
+# 7 orchestration cache, other: failed static checks or orch.py error.
+echo "== agent environment =="
+python3 - <<'PY'
+import sys
+sys.path.insert(0, "scripts")
+from orchlib import hc
+if hc.codex_daemon():
+    print(f"Codex daemon: FAIL: {hc.DAEMON_HINT}", file=sys.stderr)
+    sys.exit(6)
+print("Codex daemon: not used")
+PY
+CACHE=${ORCH_CACHE_DIR:-$HOME/.cache/herdr-orch}
+mkdir -p "$CACHE" 2>/dev/null || true
+if touch "$CACHE/.doctor" 2>/dev/null && rm -f "$CACHE/.doctor"; then
+  echo "orchestration cache: writable"
+else
+  echo "orchestration cache: FAIL: $CACHE is not writable from this command tool (OPERATIONS 3.3)" >&2
+  exit 7
+fi
+
 echo "== versions =="
 ./scripts/version-check.py || true
 
@@ -15,20 +36,6 @@ echo "planning: $([[ -d .planning ]] && echo initialized || echo 'not initialize
 echo "== static checks =="
 ./scripts/self-check.sh --offline >/dev/null
 echo "static checks: PASS"
-
-echo "== agent environment =="
-if ! python3 -c 'import sys; sys.path.insert(0, "scripts"); from orchlib import hc; sys.exit(hc.codex_daemon())'; then
-  python3 -c 'import sys; sys.path.insert(0, "scripts"); from orchlib import hc; print("FAIL:", hc.DAEMON_HINT)' >&2
-  exit 6
-fi
-CACHE=${ORCH_CACHE_DIR:-$HOME/.cache/herdr-orch}
-mkdir -p "$CACHE" 2>/dev/null || true
-if touch "$CACHE/.doctor" 2>/dev/null && rm -f "$CACHE/.doctor"; then
-  echo "orchestration cache: writable"
-else
-  echo "orchestration cache: FAIL: $CACHE is not writable from this command tool (OPERATIONS 3.3)" >&2
-  exit 7
-fi
 
 echo "== herdr-core =="
 if hc server status --json >/dev/null 2>&1; then
@@ -74,5 +81,13 @@ fi
 
 echo "== quotas and routing =="
 python3 scripts/orch.py quota
-python3 scripts/orch.py route execute | tail -1
+rc=0
+route=$(python3 scripts/orch.py route execute) || rc=$?
+echo "${route##*$'\n'}"
+# Exit 4 of `route`: no agent admitted by quota reserves now; not an environment fault.
+if ((rc == 4)); then
+  echo "route execute: no agent admitted now (quota reserves); environment OK"
+elif ((rc)); then
+  exit "$rc"
+fi
 echo "doctor: PASS"

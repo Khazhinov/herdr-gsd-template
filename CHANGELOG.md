@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.13 - 2026-11-09
+
+- `doctor.sh` checks the agent environment (Codex daemon, writable cache) first, before the slow
+  static checks.
+- `doctor.sh` no longer fails when quota reserves admit no agent for `execute`: it reports it and
+  still passes; before, it exited with code 4, the same code as a broken Codex sandbox, and printed no
+  result line. Exit codes are listed at the top of the script.
+
 ## 0.2.12 - 2026-11-09
 
 - `orch.py` and `doctor.sh` stop with exit code 6 when a command runs inside the shared Codex
