@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -20,6 +21,12 @@ class SessionStartup(unittest.TestCase):
             root = Path(temp)
             result = startup.start(root, root / 'service-worktree')
             self.assertEqual(result['status'], 'skipped')
+            run.assert_not_called()
+
+    def test_root_review_worker_does_not_start_owner_hub(self):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {'ORCH_WORKER': '1'}), patch.object(startup.subprocess, 'run') as run:
+            root = Path(temp)
+            self.assertEqual(startup.start(root, root)['status'], 'skipped')
             run.assert_not_called()
 
     def test_start_uses_existing_idempotent_hub_command(self):

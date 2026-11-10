@@ -512,7 +512,7 @@ def dispatch(
         # carry PATH, proxies and locale explicitly.
         w = cfg["routing"].get("workers", {})
         keep = w.get("pass_env", DEFAULT_PASS_ENV)
-        argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ]] + argv
+        argv = ["env", "ORCH_WORKER=1", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ]] + argv
         first = f"Read the task contract {contract} and carry it out exactly. Task id {tid}."
         if a.get("prompt", "arg") == "arg":
             argv.append(first)

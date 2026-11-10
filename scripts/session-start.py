@@ -2,6 +2,7 @@
 """Restore project startup without requiring CLI arguments or a bootstrap prompt."""
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,9 @@ CONTEXT = (
 
 
 def start(root=ROOT, cwd=None):
+    # Review workers may run at the root; dispatch marks every worker explicitly.
+    if os.environ.get("ORCH_WORKER") == "1":
+        return {"status": "skipped", "reason": "orchestration worker"}
     # A worker in a nested repository/worktree must not bootstrap as an owner.
     if Path(cwd or Path.cwd()).resolve() != root.resolve():
         return {'status': 'skipped', 'reason': 'not the workspace root'}
