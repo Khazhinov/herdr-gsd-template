@@ -11,6 +11,7 @@ echo "== overlay =="
 
 echo "== reconcile =="
 python3 ./tests/test_reconcile.py
+python3 ./tests/test_session_start.py
 
 echo "== routing, quotas, worker lifecycle (fake herdr-core) =="
 python3 ./tests/test_orch.py

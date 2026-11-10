@@ -284,3 +284,7 @@ and service repositories with persistent, visible worker agents, reusable from a
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## Automatic owner startup
+
+After bootstrap, project-local Codex configuration sets `features.daemon_auto_start = false`; users can run plain `codex` without adding `--no-daemon`. Codex and Claude SessionStart hooks preserve existing handlers, start the idempotent status hub from the project root, and supply the agent-entry context. Workers in nested worktrees skip owner startup. A disconnected core is recorded in ignored runtime state and does not prevent the agent from accepting a task. Install/show Mission Control once with `scripts/herdr-app-install.sh`; the hub then supplies its live data automatically.
