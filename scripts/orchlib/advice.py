@@ -25,7 +25,7 @@ def settings(cfg):
     return {
         "compact_tokens": a.get("compact_tokens", 100_000),
         "clear_tokens": a.get("clear_tokens", 160_000),
-        "owner_switch_percent": a.get("owner_switch_percent", 10),
+        "owner_switch_percent": a.get("owner_switch_percent", 20),
         "handoff_max_age_minutes": a.get("handoff_max_age_minutes", 120),
         "update_check_hours": a.get("update_check_hours", 24),
     }
@@ -224,6 +224,14 @@ def update(cfg, now=None, check=True, force=False):
 # ---------------------------------------------------------------- advice
 
 
+def five_hour_window(reading, now):
+    for window in (reading or {}).get("windows", []):
+        reset = window.get("resets_at")
+        if window["name"] == "5h" and (reset is None or reset > now):
+            return window
+    return {}
+
+
 def compute(cfg, quotas, running, now=None, check_update=True):
     """running: number of this project's running tasks. Returns the facts and
     a list of advice items {level: info|warn|act, kind, text, command}."""
@@ -258,34 +266,35 @@ def compute(cfg, quotas, running, now=None, check_update=True):
                     "command": a.get("compact_command", "/compact"),
                 }
             )
-    q = quotas.get(owner)
-    last = q.get("effective_remaining_percent") if q else None
+    q = quotas.get(owner) or {}
+    owner_window = five_hour_window(q, now)
+    remaining = owner_window.get("remaining_percent")
+    threshold = st["owner_switch_percent"]
     stale_low = bool(
-        q and q.get("stale") and q.get("available")
-        and last is not None and last < st["owner_switch_percent"]
-        and any(w.get("remaining_percent") == last and (w.get("resets_at") or 0) > now
-                for w in q.get("windows", []))
+        q.get("stale") and remaining is not None and remaining <= threshold
+        and owner_window.get("resets_at")
     )
-    rem = last if quota.known(q) or stale_low else None
+    rem = remaining if not q.get("stale") or stale_low else None
     switch_to = None
-    if rem is not None and rem < st["owner_switch_percent"]:
-        reading = (f"last reported {rem:.0f}% quota left (stale reading)"
-                   if stale_low else f"has {rem:.0f}% quota left")
+    if rem is not None and rem <= threshold:
+        reading = (f"last reported {rem:.0f}% of its 5h quota left (stale reading)"
+                   if stale_low else f"has {rem:.0f}% of its 5h quota left")
         verify = "verify the current quota, " if stale_low else ""
         acct = quota.account(cfg, owner)
         best = None
         for aid, b in cfg["agents"].items():
-            qb = quotas.get(aid)
+            qb = quotas.get(aid) or {}
             if (
                 aid == owner
                 or quota.account(cfg, aid) == acct
                 or "owner" not in b.get("capabilities", [])
-                or not quota.known(qb)
+                or qb.get("stale")
             ):
                 continue
-            if best is None or qb["effective_remaining_percent"] > best[1]:
-                best = (aid, qb["effective_remaining_percent"])
-        if best and best[1] > st["owner_switch_percent"]:
+            peer_remaining = five_hour_window(qb, now).get("remaining_percent")
+            if peer_remaining is not None and (best is None or peer_remaining > best[1]):
+                best = (aid, peer_remaining)
+        if best and best[1] > rem:
             switch_to = best[0]
             items.append(
                 {

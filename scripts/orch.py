@@ -537,7 +537,7 @@ def cmd_advice(cfg, a):
         q = "?" if r["owner_quota"] is None else f"{r['owner_quota']:.0f}"
         if r["owner_quota_stale"]:
             q += " (stale)"
-        print(f"owner {r['owner']}: quota {q}%, context {size} tokens")
+        print(f"owner {r['owner']}: 5h quota {q}%, context {size} tokens")
         for i in r["items"]:
             print(
                 f"[{i['level']}] {i['text']}"
