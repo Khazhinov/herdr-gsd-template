@@ -11,6 +11,7 @@ import re
 import shutil
 import statistics
 import subprocess
+import sys
 import time
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -387,7 +388,8 @@ PROTOCOL = """
   `Result: complete`, `Result: incomplete`, `Major issue: yes`, `Major issue: no`.
 - If a missing decision blocks you, stop and write the report with `Result: incomplete`.
 - Never approve permission dialogs on your own; wait for a person.
-- When the report is written, stop. The owner watches your terminal; no message is needed.
+- After saving the report with its final sentinel, end your turn. The local Herdr
+  hub delivers the task ID to the owner for asynchronous dispatches.
 """
 
 
@@ -403,6 +405,7 @@ def dispatch(
     report=None,
     replace=False,
     of=None,
+    notify_owner=True,
 ):
     if not ID_RE.match(tid):
         raise SystemExit(f"invalid task id {tid!r}: {ID_RE.pattern}")
@@ -481,6 +484,7 @@ def dispatch(
         if not report.is_absolute():
             report = Path(cwd) / report
         parent = os.environ.get("HC_TERMINAL_ID")
+        notify_owner = bool(parent and notify_owner)
         contract = runtime(cfg) / "tasks" / f"{tid}.md"
         contract.write_text(
             body
@@ -524,7 +528,8 @@ def dispatch(
             "orch.project": project_name(cfg),
         }
         name = f"w-{tid}"[:32]
-        res = hc.run(argv, name, cwd, labels, outlive_parent=w.get("outlive_parent", True))
+        res = hc.run(argv, name, cwd, labels, outlive_parent=w.get("outlive_parent", True),
+                     no_notify=notify_owner)
         if w.get("show_in_app", True):
             hc.show(name, cfg["root"], w.get("space", "caller"))
         addr = res.get("address") if isinstance(res, dict) else None
@@ -552,6 +557,7 @@ def dispatch(
             "report": str(report),
             "contract": str(contract),
             "parent": parent,
+            "notify_owner": notify_owner,
             "state": "running",
             "started_at": entry["started_at"],
             "independent": d["independent"],
@@ -656,6 +662,43 @@ def report_sentinel(path):
     except OSError:
         return None
     return lines[-1] if lines and lines[-1] in SENTINELS else None
+
+
+def notify_reports(cfg, records, terminals):
+    """Deliver ready reports from the hub, outside the vendor's sandbox."""
+    waiting = {
+        term["address"] for term in terminals
+        if term.get("state") == "live"
+        and isinstance(term.get("status"), dict)
+        and term["status"].get("state") in ("idle", "done")
+    }
+    for task in records:
+        parent = task.get("parent")
+        if not (task.get("notify_owner") and task["state"] == "running" and parent in waiting):
+            continue
+        tid = task["id"]
+        worker = task["live"]
+        if task.get("sentinel") in SENTINELS:
+            event = "report"
+            message = f"Worker report ready for {tid}. Run python3 scripts/orch.py collect {tid}."
+        elif worker.get("state") == "finished":
+            event = "exit"
+            message = f"Worker for {tid} exited without a report. Check the dispatch and collect its status."
+        elif worker.get("status") in ("blocked", "error") and task.get("startup_ok"):
+            event = f"{worker['status']}:{worker['status_ms']}"
+            message = f"Worker for {tid} reported {worker['status']}. Check its Herdr tab."
+        else:
+            continue
+        receipt = runtime(cfg) / "notifications" / f"{tid}.json"
+        generation = [task["started_at"], event]
+        try:
+            if receipt.exists() and json.loads(receipt.read_text()) == generation:
+                continue
+            hc.send(parent, message)
+            receipt.parent.mkdir(parents=True, exist_ok=True)
+            write_json(receipt, generation)
+        except (OSError, ValueError, hc.HCError) as exc:
+            print(f"report notification for {tid} failed: {exc}", file=sys.stderr)
 
 
 def evidence(cfg, t):
@@ -795,6 +838,7 @@ def refresh(cfg, terminals=None):
             "status": st.get("state") if isinstance(st, dict) else st,
             "msg": st.get("msg") if isinstance(st, dict) else None,
             "address": (term or {}).get("address"),
+            "status_ms": (term or {}).get("status_ms"),
         }
         t["sentinel"] = report_sentinel(t["report"]) if t.get("report") else None
         out.append(t)

@@ -26,6 +26,7 @@ When you were started by `scripts/orch.py dispatch`, you are a **worker**:
 4. In a worktree, do not commit: leave changes in the tree; the owner commits after reading your report.
 5. Write the report to the path in the contract; its last line is exactly one sentinel
    (`Result: complete`, `Result: incomplete`, `Major issue: yes`, `Major issue: no`).
+   End your turn so the Herdr hub can notify the owner from the saved report.
 6. Do not start other agents. Never approve permission dialogs on your own.
 7. If a missing decision blocks you, stop with `Result: incomplete` and say what is missing.
 8. Apply `.agents/skills/gsd-context-discipline/SKILL.md`: targeted reads, no rereads, diff-only rereview, batched checks.

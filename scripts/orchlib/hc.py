@@ -85,7 +85,7 @@ def get(t):
     return call("get", t, "--json")
 
 
-def run(argv, name, cwd, labels=None, outlive_parent=False, no_parent=False):
+def run(argv, name, cwd, labels=None, outlive_parent=False, no_parent=False, no_notify=False):
     args = ["run", "--bg", "--json", "--name", name, "--cwd", str(cwd)]
     for k, v in (labels or {}).items():
         args += ["--label", f"{k}={v}"]
@@ -93,6 +93,8 @@ def run(argv, name, cwd, labels=None, outlive_parent=False, no_parent=False):
         args.append("--outlive-parent")
     if no_parent:
         args.append("--no-parent")
+    if no_notify:
+        args.append("--no-notify")
     return call(*args, "--", *argv)
 
 

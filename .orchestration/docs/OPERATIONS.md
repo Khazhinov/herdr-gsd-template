@@ -10,7 +10,7 @@ English | [Русский](OPERATIONS.ru.md)
 | `orch.py route <role> [--heavy\|--light]` | dry-run agent selection with the reason |
 | `orch.py prefer <role> <agent\|->` | manual override of the next selection (`-` clears it) |
 | `orch.py dispatch <task.md> --role <r> --id <id>` | starts a worker; `execute` gets a worktree |
-| `orch.py wait [--timeout S]` | waits for a worker event |
+| `orch.py wait [--timeout S]` | waits for a worker event during manual diagnosis |
 | `orch.py collect <id> [--keep-worker]` | checks evidence, commits the worktree, stops the worker |
 | `orch.py worktree merge\|remove\|path <id>` | merges or drops the `orch/<id>` branch |
 | `orch.py status [--json]` | state snapshot |
@@ -44,6 +44,12 @@ quota_static = {remaining_percent = 100}
 ```
 
 ## 3. A worker waits for a human
+
+After checking `dispatch` startup, the owner ends its turn and leaves its Herdr tab open.
+When a report has a final sentinel, the local hub sends the dispatch ID to the original owner
+terminal once it is idle. Collect the matching report with `orch.py collect <id>`.
+The hub handles delivery outside the worker sandbox. A closed owner tab or a dispatch outside
+Herdr requires manual collection. The owner does no model work between turns.
 
 `dispatch` reports `startup.ok: false` if the agent has not reported a status within 25 s. Typical causes:
 the project root trust dialog (first agent start in the project), account login.
