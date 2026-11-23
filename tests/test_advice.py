@@ -78,8 +78,8 @@ class Advice(unittest.TestCase):
         self.assertIsNone(own["command"])
 
     def test_switch_uses_inclusive_five_hour_threshold_and_strictly_better_peer(self):
-        for current, peer, suggested in ((20, 21, True), (19, 20, True), (0, 1, True),
-                                         (21, 90, False), (20, 20, False)):
+        for current, peer, suggested in ((30, 31, True), (29, 30, True), (0, 1, True),
+                                         (31, 90, False), (30, 30, False)):
             with self.subTest(current=current, peer=peer):
                 owner = q("claude", current)
                 candidate = q("codex", peer)

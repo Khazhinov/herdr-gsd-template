@@ -25,7 +25,7 @@ def settings(cfg):
     return {
         "compact_tokens": a.get("compact_tokens", 100_000),
         "clear_tokens": a.get("clear_tokens", 160_000),
-        "owner_switch_percent": a.get("owner_switch_percent", 20),
+        "owner_switch_percent": a.get("owner_switch_percent", 30),
         "handoff_max_age_minutes": a.get("handoff_max_age_minutes", 120),
         "update_check_hours": a.get("update_check_hours", 24),
     }
