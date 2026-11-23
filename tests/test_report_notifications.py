@@ -47,6 +47,38 @@ class ReportNotificationTests(unittest.TestCase):
         )
 
     @patch.object(hc, "send")
+    def test_parallel_reports_share_one_notification_per_owner(self, send):
+        other_owner = {"address": "t2", "state": "live", "status": {"state": "idle"}}
+        docs = dict(self.worker, id="docs")
+        lint = dict(self.worker, id="lint", parent="t2")
+        followup = dict(self.worker, id="followup", sentinel=None,
+                        live={"state": "live", "status": "working"})
+        records = [self.worker, docs, lint, followup]
+        terminals = [self.owner, other_owner]
+
+        tasks.notify_reports(self.cfg, records, terminals)
+        tasks.notify_reports(self.cfg, records, terminals)
+        self.assertEqual(send.call_count, 2)
+        owner, message = send.call_args_list[0].args
+        self.assertEqual(owner, "t1")
+        self.assertIn("collect review.", message)
+        self.assertIn("collect docs.", message)
+        self.assertNotIn("followup", message)
+        self.assertNotIn("lint", message)
+        self.assertEqual(send.call_args_list[1].args[0], "t2")
+
+        followup["sentinel"] = "Result: complete"
+        self.owner["status"]["state"] = "working"
+        tasks.notify_reports(self.cfg, records, terminals)
+        self.assertEqual(send.call_count, 2)
+        self.owner["status"]["state"] = "idle"
+        tasks.notify_reports(self.cfg, records, terminals)
+        self.assertEqual(send.call_count, 3)
+        send.assert_called_with(
+            "t1", "Worker report ready for followup. Run python3 scripts/orch.py collect followup."
+        )
+
+    @patch.object(hc, "send")
     def test_blocker_followed_by_report_and_reused_task_id(self, send):
         self.worker.update(sentinel=None, live={"state": "live", "status": "blocked", "status_ms": 2})
         self.notify()

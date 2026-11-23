@@ -74,8 +74,9 @@ command is obsolete, and only herdr-core `hc` is required. Moving from v0.1: [MI
 3. Start workers only with `orch.py dispatch`, never with a raw `hc run` and never with `herdr ...`. `dispatch`
    already does what herdr-core needs: background start under the owner terminal, `--outlive-parent`,
    the caller's environment through `env`, `codex --no-daemon`, the space label and the start check.
-4. Check startup, end the owner turn and leave the Herdr tab open. The hub resumes the owner
-   when the worker saves its report. Use `orch.py wait` for manual diagnosis.
+4. Launch independent workers in parallel as needed. Check startup, end the owner turn and
+   leave the Herdr tab open. The hub resumes the owner when reports are ready.
+   Use `orch.py wait` for manual diagnosis.
 5. `orch.py collect <id>`: success is the report sentinel plus, for execution, commits on a clean branch;
    the worker status `done` or `idle` is not success. The full loop: [orch-workers](.agents/skills/orch-workers/SKILL.md).
 

@@ -119,7 +119,8 @@ def cmd_dispatch(cfg, a):
         if not t["startup"]["ok"]:
             print(f"startup: {t['startup']['why']}")
         if t["notify_owner"]:
-            print("End this turn and leave the owner terminal open. "
+            print("After launching any other independent workers, "
+                  "end this turn and leave the owner terminal open. "
                   f"On the hub's notification: orch.py collect {t['id']}")
         else:
             print("No Herdr owner terminal registered. Manual recovery: orch.py collect " + t["id"])

@@ -52,12 +52,14 @@ preserve the worker flow and report the permission error. See OPERATIONS section
    - The output shows the agent, terminal, report path and the routing reason.
    - `startup.ok: false` means the worker waits for a person (trust/login). Tell the user;
      do not press keys for them.
-3. End the owner turn after the startup check and leave its Herdr tab open. While the
-   worker runs, keep the owner between turns. Use `orch wait` for manual diagnosis.
-   The worker saves its report and ends its turn. The Herdr hub sends the
-   notification to the original owner terminal. Use its task ID to select the
-   matching dispatch and collect its report. The report sentinel and required checks
-   determine the outcome. If the owner terminal was unavailable, collect manually at resume.
+3. Launch ready, independent contracts in parallel where appropriate. Check their startup,
+   then end the owner turn and leave the Herdr tab open. Waiting happens between turns,
+   with no `orch wait`, `sleep`, polling or background agent work.
+   Each worker saves its report and ends its turn. The Herdr hub delivers the ready
+   dispatch IDs to the original owner terminal in one notification per check.
+   Collect those reports and act on their findings. End the turn again if the remaining
+   workers are still running and no owner action is due. If the owner terminal was
+   unavailable, collect manually at resume.
 4. `orch collect <id>`: judges evidence, commits a complete worktree on its branch, backs the
    report up to `.orchestration/runtime/reports/`, stops the worker.
    - `state: complete` -> read the report, decide.

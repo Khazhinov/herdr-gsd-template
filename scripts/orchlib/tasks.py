@@ -672,6 +672,7 @@ def notify_reports(cfg, records, terminals):
         and isinstance(term.get("status"), dict)
         and term["status"].get("state") in ("idle", "done")
     }
+    pending = {}
     for task in records:
         parent = task.get("parent")
         if not (task.get("notify_owner") and task["state"] == "running" and parent in waiting):
@@ -694,11 +695,23 @@ def notify_reports(cfg, records, terminals):
         try:
             if receipt.exists() and json.loads(receipt.read_text()) == generation:
                 continue
-            hc.send(parent, message)
-            receipt.parent.mkdir(parents=True, exist_ok=True)
-            write_json(receipt, generation)
-        except (OSError, ValueError, hc.HCError) as exc:
-            print(f"report notification for {tid} failed: {exc}", file=sys.stderr)
+        except (OSError, ValueError) as exc:
+            print(f"report notification receipt for {tid} could not be read: {exc}", file=sys.stderr)
+            continue
+        pending.setdefault(parent, []).append((message, receipt, generation))
+
+    for parent, notifications in pending.items():
+        try:
+            hc.send(parent, " ".join(message for message, _, _ in notifications))
+        except (OSError, hc.HCError) as exc:
+            print(f"report notification to {parent} failed: {exc}", file=sys.stderr)
+            continue
+        for _, receipt, generation in notifications:
+            try:
+                receipt.parent.mkdir(parents=True, exist_ok=True)
+                write_json(receipt, generation)
+            except OSError as exc:
+                print(f"report notification receipt {receipt.stem} could not be saved: {exc}", file=sys.stderr)
 
 
 def evidence(cfg, t):

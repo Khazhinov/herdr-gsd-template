@@ -45,9 +45,10 @@ quota_static = {remaining_percent = 100}
 
 ## 3. A worker waits for a human
 
-After checking `dispatch` startup, the owner ends its turn and leaves its Herdr tab open.
-When a report has a final sentinel, the local hub sends the dispatch ID to the original owner
-terminal once it is idle. Collect the matching report with `orch.py collect <id>`.
+The owner can dispatch independent workers in parallel. After checking startup, it ends its
+turn and leaves its Herdr tab open. The local hub groups ready reports by their original
+owner and sends one notification per idle terminal. Collect each report with `orch.py collect <id>`.
+End the turn again when remaining workers are still running and no owner action is due.
 The hub handles delivery outside the worker sandbox. A closed owner tab or a dispatch outside
 Herdr requires manual collection. The owner does no model work between turns.
 
