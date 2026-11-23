@@ -621,6 +621,9 @@ class Lifecycle(unittest.TestCase):
         self.assertTrue(t["independent"])
         self.assertTrue(list((tasks.runtime(c) / "archive").glob("author-*/author.json")))
         self.assertTrue(list((tasks.runtime(c) / "archive").glob("author-*/author.md")))
+        self.assertFalse(Path(t["report"]).exists(), "retry can see the previous run's report")
+        self.assertTrue(list((tasks.runtime(c) / "archive").glob("author-*/author.backup.md")))
+        self.assertEqual(json.loads(self.run_orch("collect", "author")[1])["state"], "running")
 
     def test_merge_preflight_rejects_conflicts_and_branch_planning(self):
         t = json.loads(self.run_orch("dispatch", self.task(), "--role", "execute", "--id", "merge-guard", "--json")[1])

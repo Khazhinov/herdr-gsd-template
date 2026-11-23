@@ -391,6 +391,20 @@ PROTOCOL = """
 """
 
 
+def archive_replaced_task(cfg, tid, old):
+    archive = runtime(cfg) / "archive" / f"{tid}-{int(time.time() * 1000)}"
+    archive.mkdir(parents=True, exist_ok=True)
+    backup = runtime(cfg) / "reports" / f"{tid}.md"
+    report = Path(old["report"]) if old.get("report") else backup
+    if report.exists():
+        shutil.move(report, archive / f"{tid}.md")
+        if backup != report and backup.exists():
+            shutil.move(backup, archive / f"{tid}.backup.md")
+    elif backup.exists():
+        shutil.move(backup, archive / f"{tid}.md")
+    shutil.move(task_path(cfg, tid), archive / f"{tid}.json")
+
+
 def dispatch(
     cfg,
     task_file,
@@ -434,14 +448,7 @@ def dispatch(
             raise SystemExit(d["reason"])
         aid = d["selected"]
         if task_path(cfg, tid).exists():
-            archive = runtime(cfg) / "archive" / f"{tid}-{int(time.time() * 1000)}"
-            archive.mkdir(parents=True, exist_ok=True)
-            shutil.move(task_path(cfg, tid), archive / f"{tid}.json")
-            old_report = runtime(cfg) / "reports" / f"{tid}.md"
-            if not old_report.exists() and old.get("report") and Path(old["report"]).exists():
-                old_report = Path(old["report"])
-            if old_report.exists():
-                shutil.move(old_report, archive / f"{tid}.md")
+            archive_replaced_task(cfg, tid, old)
         acct = quota.account(cfg, aid)
         marks = quota_mark(quotas.get(aid))
         raw_windows = {
