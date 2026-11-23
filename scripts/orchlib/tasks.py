@@ -535,9 +535,13 @@ def dispatch(
                     e.update(state="running", terminal=addr or name)
             save_ledger(data)
         if a.get("prompt") == "send":
-            hc.wait(name, timeout=120)
-            hc.send(name, first)
-        startup = startup_check(name)
+            startup = startup_check(name, seconds=120, wait_ready=True)
+            if startup["ok"]:
+                hc.send(name, first)
+            else:
+                startup["prompt"] = first
+        else:
+            startup = startup_check(name)
         t = {
             "id": tid,
             "role": role,
@@ -625,7 +629,7 @@ def overlapped(cfg, t, now):
     )
 
 
-def startup_check(name, seconds=25):
+def startup_check(name, seconds=25, wait_ready=False):
     """Agents report status (OSC 7501) once their UI is up. No status after a
     short while usually means a dialog only a person should answer (folder
     trust, login). Report it instead of silently waiting."""
@@ -638,8 +642,12 @@ def startup_check(name, seconds=25):
         if g.get("state") != "live":
             return {"ok": False, "why": f"worker exited: {hc.read(name, 20)}"[-600:]}
         st = g.get("status") or {}
-        if isinstance(st, dict) and st.get("state"):
-            return {"ok": True, "status": st["state"]}
+        if isinstance(st, dict):
+            status = st.get("state")
+            if status == "blocked":
+                return {"ok": False, "why": st.get("msg") or "worker needs attention"}
+            if status and (not wait_ready or status in ("idle", "done")):
+                return {"ok": True, "status": status}
         time.sleep(2)
     screen = hc.read(name, 0)
     tail = "\n".join(x for x in str(screen).splitlines() if x.strip())[-500:]

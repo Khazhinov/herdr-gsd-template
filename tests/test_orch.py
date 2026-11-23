@@ -348,6 +348,22 @@ class Lifecycle(unittest.TestCase):
         import orch
         self.orch = orch
 
+    def test_send_worker_waits_for_ready_status(self):
+        cfg_data = config.load(self.repo)
+        cfg_data["agents"]["codex"]["prompt"] = "send"
+        idle = {"state": "live", "status": {"state": "idle"}}
+        blocked = {"state": "live", "status": {"state": "blocked", "msg": "folder trust"}}
+        with mock.patch.object(hc, "get", return_value=blocked), mock.patch.object(hc, "send") as send:
+            task = tasks.dispatch(cfg_data, self.task(), "review", "blocked-tui")
+            send.assert_not_called()
+        self.assertFalse(task["startup"]["ok"])
+        self.assertEqual(task["startup"]["why"], "folder trust")
+        self.assertIn("Read the task contract", task["startup"]["prompt"])
+        with mock.patch.object(hc, "get", return_value=idle), mock.patch.object(hc, "send") as send:
+            task = tasks.dispatch(cfg_data, self.task(), "review", "ready-tui")
+            send.assert_called_once()
+        self.assertTrue(task["startup"]["ok"])
+
     def tearDown(self):
         for k, v in self.old.items():
             if v is None:
