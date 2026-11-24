@@ -49,6 +49,8 @@ command is obsolete, and only herdr-core `hc` is required. Moving from v0.1: [MI
 ./scripts/doctor.sh
 ```
 
+[Runtime compatibility and upgrade notes](docs/compatibility.md)
+
 ## Quick start
 
 ### For a person

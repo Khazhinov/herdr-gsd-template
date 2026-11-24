@@ -6,3 +6,5 @@ docs/peer/*.tmp
 .orchestration/worktrees/
 docs/orch/*.tmp
 .orchestration/*.local.toml
+
+/.claude/settings.local.json

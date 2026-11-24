@@ -50,10 +50,11 @@ copy_one "$SOURCE/.codex/config.toml" .codex/config.toml
 mkdir -p "$TARGET/docs/orch"
 chmod +x "$TARGET"/scripts/*.sh "$TARGET"/scripts/*.py 2>/dev/null || true
 
-# Runtime state and worker worktrees never belong in git.
+# Keep generated runtime state and local settings out of git.
 touch "$TARGET/.gitignore"
 for line in .orchestration/runtime/ .orchestration/merge-required/ .orchestration/worktrees/ \
-            .orchestration/agents.local.toml .orchestration/routing.local.toml; do
+            .orchestration/agents.local.toml .orchestration/routing.local.toml \
+            /.claude/settings.local.json; do
   grep -qxF "$line" "$TARGET/.gitignore" || echo "$line" >> "$TARGET/.gitignore"
 done
 

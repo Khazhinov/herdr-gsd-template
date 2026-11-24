@@ -80,9 +80,18 @@ grep -q 'https://github.com/openai/codex' README.md || fail "Codex link missing"
 grep -q 'https://t.me/thoughts_and_bytes/27' README.md || fail "talk post link missing"
 
 python3 - <<'PY'
+import subprocess
 from pathlib import Path
+
+local_claude = Path('.claude/settings.local.json')
+local_ignored = subprocess.run(
+    ['git', 'check-ignore', '--quiet', '--', str(local_claude)]
+).returncode == 0
+
 bad = ['aut'+'o-kalym', 'zv'+'enir', 'on1'+'kel']
 for p in Path('.').rglob('*'):
+    if local_ignored and p == local_claude:
+        continue
     if p.is_file() and not {'.git', 'runtime', 'worktrees'} & set(p.parts):
         t = p.read_text(errors='ignore').lower()
         for x in bad:
