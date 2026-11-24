@@ -155,3 +155,8 @@ Initial public template.
 - Clarified the Codex-first quota strategy in README: consume Codex capacity first, fall back to Claude for new heavy tasks near the reserve threshold.
 - Added `doctor.sh`, explicit version compatibility checks, fail-closed overlay conflict handling and credential-free GitHub Actions regression tests, including a pinned GSD installer smoke-test.
 - Revalidated worktree root-before-remove lifecycle and overlay installation; fixed machine-readable worktree path output.
+
+## Unreleased - automatic owner startup
+
+- Start the status hub from additive Codex/Claude SessionStart hooks and guide owners to restore project state without a special prompt. Keep nested workers out of owner startup.
+- Set project-local daemon_auto_start=false so ordinary Codex launches preserve their terminal environment without a CLI argument.

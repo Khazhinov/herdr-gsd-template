@@ -36,3 +36,7 @@ A new runtime is a new entry there; its instruction file is this `AGENTS.md` or 
 
 If you are the owner (routing.toml says so), follow `.claude/CLAUDE.md` with your runtime in place of Claude
 and `.agents/skills/orch-workers/SKILL.md`.
+
+## Owner startup without a special prompt
+
+For an owner session at the repository root, restore `.planning/STATE.md` and run `python3 scripts/session-start.py` once if the SessionStart hook has not already done so. The hook starts the idempotent status hub and supplies the project-entry context. Follow the user's task through the project workflow without requiring them to repeat bootstrap instructions. Workers follow their contract and do not run owner startup. Project-local Codex configuration sets daemon_auto_start=false, so an ordinary `codex` command keeps its own terminal environment.

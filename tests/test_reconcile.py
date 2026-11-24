@@ -43,7 +43,8 @@ with tempfile.TemporaryDirectory() as td:
     for _ in range(2):
         subprocess.run([str(root / "scripts/reconcile-runtime-config.py")], cwd=root, check=True, capture_output=True)
     data = json.loads((root / ".claude/settings.json").read_text())
-    assert data["hooks"] == {"x": 1}
+    assert data["hooks"]["x"] == 1
+    assert len(data["hooks"]["SessionStart"]) == 1
     assert data["statusLine"]["command"].endswith("statusline-tap -- 'node gsd-statusline.js'"), data
 
 with tempfile.TemporaryDirectory() as td:
@@ -64,6 +65,7 @@ with tempfile.TemporaryDirectory() as td:
     (root / ".codex/config.toml").write_text(gsd)
     q = subprocess.run([str(root / "scripts/reconcile-runtime-config.py")], cwd=root, capture_output=True, text=True)
     assert q.returncode == 0 and "managed by the GSD installer" in q.stdout, q
-    assert (root / ".codex/config.toml").read_text() == gsd
+    assert (root / ".codex/config.toml").read_text().startswith(gsd)
+    assert "daemon_auto_start = false" in (root / ".codex/config.toml").read_text()
 
 print("reconcile test: PASS")

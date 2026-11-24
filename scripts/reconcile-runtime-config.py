@@ -80,4 +80,31 @@ else:
         )
         codex.write_text(text.rstrip() + "\n")
 
+# Project-local defaults: plain `codex` keeps its own terminal environment.
+# The installed CLI exposes daemon_auto_start via `codex features list`.
+text = codex.read_text()
+if re.search(r"(?m)^daemon_auto_start\s*=", text):
+    text = re.sub(r"(?m)^daemon_auto_start\s*=.*$", "daemon_auto_start = false", text)
+elif re.search(r"(?m)^\[features\]\s*$", text):
+    text = re.sub(r"(?m)^\[features\]\s*$", "[features]\ndaemon_auto_start = false", text, count=1)
+else:
+    text += "\n[features]\ndaemon_auto_start = false\nhooks = true\n"
+codex.write_text(text)
+
+# Preserve generated/vendor hooks and install our idempotent startup handler.
+startup = "python3 " + shlex.quote(str(root / "scripts/session-start.py")) + " --hook"
+def add_startup(data):
+    groups = data.setdefault("hooks", {}).setdefault("SessionStart", [])
+    for group in groups:
+        group["hooks"] = [h for h in group.get("hooks", []) if "scripts/session-start.py" not in h.get("command", "")]
+    groups[:] = [group for group in groups if group.get("hooks")]
+    groups.append({"hooks": [{"type": "command", "command": startup, "timeout": 40}]})
+    return data
+
+hook_path = root / ".codex/hooks.json"
+hook_data = json.loads(hook_path.read_text()) if hook_path.exists() else {}
+hook_path.write_text(json.dumps(add_startup(hook_data), indent=2) + "\n")
+data = json.loads(settings.read_text()) if settings.exists() else {}
+settings.write_text(json.dumps(add_startup(data), indent=2) + "\n")
+
 print("runtime config reconciled")
