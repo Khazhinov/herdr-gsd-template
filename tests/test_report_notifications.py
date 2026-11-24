@@ -104,6 +104,28 @@ class ReportNotificationTests(unittest.TestCase):
         )
 
     @patch.object(hc, "send")
+    def test_completed_turn_without_a_report_wakes_owner_once(self, send):
+        self.worker.update(sentinel=None, startup_ok=False,
+                           live={"state": "live", "status": "done", "turn": 0})
+        self.notify()
+        send.assert_not_called()
+
+        self.worker["live"]["turn"] = 1
+        self.notify()
+        self.notify()
+        send.assert_called_once_with(
+            "t1", "Worker for review finished its turn without a report. Check its Herdr tab."
+        )
+
+        self.worker["sentinel"] = "Result: incomplete"
+        self.notify()
+        self.notify()
+        self.assertEqual(send.call_count, 2)
+        send.assert_called_with(
+            "t1", "Worker report ready for review. Run python3 scripts/orch.py collect review."
+        )
+
+    @patch.object(hc, "send")
     def test_no_wake_for_startup_block_or_closed_owner(self, send):
         self.worker.update(sentinel=None, startup_ok=False,
                            live={"state": "live", "status": "blocked", "status_ms": 2})

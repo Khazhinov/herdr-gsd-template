@@ -708,6 +708,9 @@ def notify_reports(cfg, records, terminals):
         elif worker.get("status") in ("blocked", "error") and task.get("startup_ok"):
             event = f"{worker['status']}:{worker['status_ms']}"
             message = f"Worker for {tid} reported {worker['status']}. Check its Herdr tab."
+        elif worker.get("state") == "live" and worker.get("status") == "done" and worker.get("turn", 0) > 0:
+            event = f"done-without-report:{worker['turn']}"
+            message = f"Worker for {tid} finished its turn without a report. Check its Herdr tab."
         else:
             continue
         receipt = runtime(cfg) / "notifications" / f"{tid}.json"
@@ -872,6 +875,7 @@ def refresh(cfg, terminals=None):
             "msg": st.get("msg") if isinstance(st, dict) else None,
             "address": (term or {}).get("address"),
             "status_ms": (term or {}).get("status_ms"),
+            "turn": (term or {}).get("turn") or 0,
         }
         t["sentinel"] = report_sentinel(t["report"]) if t.get("report") else None
         out.append(t)
