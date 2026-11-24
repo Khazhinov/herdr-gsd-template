@@ -391,6 +391,20 @@ PROTOCOL = """
 """
 
 
+def archive_replaced_task(cfg, tid, old):
+    archive = runtime(cfg) / "archive" / f"{tid}-{int(time.time() * 1000)}"
+    archive.mkdir(parents=True, exist_ok=True)
+    backup = runtime(cfg) / "reports" / f"{tid}.md"
+    report = Path(old["report"]) if old.get("report") else backup
+    if report.exists():
+        shutil.move(report, archive / f"{tid}.md")
+        if backup != report and backup.exists():
+            shutil.move(backup, archive / f"{tid}.backup.md")
+    elif backup.exists():
+        shutil.move(backup, archive / f"{tid}.md")
+    shutil.move(task_path(cfg, tid), archive / f"{tid}.json")
+
+
 def dispatch(
     cfg,
     task_file,
@@ -434,14 +448,7 @@ def dispatch(
             raise SystemExit(d["reason"])
         aid = d["selected"]
         if task_path(cfg, tid).exists():
-            archive = runtime(cfg) / "archive" / f"{tid}-{int(time.time() * 1000)}"
-            archive.mkdir(parents=True, exist_ok=True)
-            shutil.move(task_path(cfg, tid), archive / f"{tid}.json")
-            old_report = runtime(cfg) / "reports" / f"{tid}.md"
-            if not old_report.exists() and old.get("report") and Path(old["report"]).exists():
-                old_report = Path(old["report"])
-            if old_report.exists():
-                shutil.move(old_report, archive / f"{tid}.md")
+            archive_replaced_task(cfg, tid, old)
         acct = quota.account(cfg, aid)
         marks = quota_mark(quotas.get(aid))
         raw_windows = {
@@ -535,9 +542,13 @@ def dispatch(
                     e.update(state="running", terminal=addr or name)
             save_ledger(data)
         if a.get("prompt") == "send":
-            hc.wait(name, timeout=120)
-            hc.send(name, first)
-        startup = startup_check(name)
+            startup = startup_check(name, seconds=120, wait_ready=True)
+            if startup["ok"]:
+                hc.send(name, first)
+            else:
+                startup["prompt"] = first
+        else:
+            startup = startup_check(name)
         t = {
             "id": tid,
             "role": role,
@@ -625,7 +636,7 @@ def overlapped(cfg, t, now):
     )
 
 
-def startup_check(name, seconds=25):
+def startup_check(name, seconds=25, wait_ready=False):
     """Agents report status (OSC 7501) once their UI is up. No status after a
     short while usually means a dialog only a person should answer (folder
     trust, login). Report it instead of silently waiting."""
@@ -638,8 +649,12 @@ def startup_check(name, seconds=25):
         if g.get("state") != "live":
             return {"ok": False, "why": f"worker exited: {hc.read(name, 20)}"[-600:]}
         st = g.get("status") or {}
-        if isinstance(st, dict) and st.get("state"):
-            return {"ok": True, "status": st["state"]}
+        if isinstance(st, dict):
+            status = st.get("state")
+            if status == "blocked":
+                return {"ok": False, "why": st.get("msg") or "worker needs attention"}
+            if status and (not wait_ready or status in ("idle", "done")):
+                return {"ok": True, "status": status}
         time.sleep(2)
     screen = hc.read(name, 0)
     tail = "\n".join(x for x in str(screen).splitlines() if x.strip())[-500:]

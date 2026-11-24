@@ -114,6 +114,10 @@ def cmd_dispatch(cfg, a):
         print(f"{t['id']}: {t['agent']} in {t['terminal']} cwd={t['cwd']}")
         print(f"reason: {t['reason']}")
         print(f"report: {t['report']}")
+        if not t["startup"]["ok"]:
+            print(f"startup blocked: {t['startup']['why']}")
+            if t["startup"].get("prompt"):
+                print(f"When the terminal is ready, send: {t['startup']['prompt']}")
         print("next: orch.py wait   then   orch.py collect " + t["id"])
     return 0
 
