@@ -77,6 +77,35 @@ class Advice(unittest.TestCase):
         own = next(i for i in r["items"] if i["kind"] == "owner")
         self.assertIsNone(own["command"])
 
+    def test_switch_uses_inclusive_five_hour_threshold_and_strictly_better_peer(self):
+        for current, peer, suggested in ((30, 31, True), (29, 30, True), (0, 1, True),
+                                         (31, 90, False), (30, 30, False)):
+            with self.subTest(current=current, peer=peer):
+                owner = q("claude", current)
+                candidate = q("codex", peer)
+                for reading, weekly in ((owner, 2), (candidate, 1)):
+                    reading["windows"].append(quota.window("7d", 100 - weekly, NOW + 3600, 10080, NOW))
+                    reading["effective_remaining_percent"] = weekly
+                result = self.compute({"claude": owner, "codex": candidate})
+                commands = [item["command"] for item in result["items"] if item["kind"] == "owner"]
+                self.assertEqual("python3 scripts/orch.py owner set codex --launch" in commands, suggested)
+                self.assertEqual(result["owner_quota"], current)
+
+    def test_switch_requires_fresh_peer_five_hour_reading(self):
+        owner = q("claude", 0)
+        for peer_state in ("stale", "expired", "weekly_only"):
+            with self.subTest(peer_state=peer_state):
+                peer = q("codex", 90)
+                if peer_state == "stale":
+                    peer["stale"] = True
+                elif peer_state == "expired":
+                    peer["windows"][0]["resets_at"] = NOW - 1
+                else:
+                    peer["windows"][0]["name"] = "7d"
+                result = self.compute({"claude": owner, "codex": peer})
+                switch = next(item for item in result["items"] if item["kind"] == "owner")
+                self.assertIsNone(switch["command"])
+
     def test_stale_low_quota_advises_only_before_window_reset(self):
         old = q("claude", 8)
         old["stale"] = True

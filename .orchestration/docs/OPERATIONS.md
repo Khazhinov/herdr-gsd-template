@@ -146,7 +146,7 @@ by `status`; a task left without a worker is failed, not running or complete.
 
 ## 5. Owner handoff
 
-Reasons: the owner runs out of its vendor quota (`orch.py advice` suggests a switch when the remaining quota drops below `advice.owner_switch_percent`, 10% by default, and names the project agent with the `owner` capability and the largest remaining quota), or a human decision.
+Reasons: the owner runs out of its vendor quota (`orch.py advice` suggests a switch when the remaining quota in the five-hour window is at or below `advice.owner_switch_percent`, 30% by default, and names an owner-capable agent with a strictly higher five-hour balance), or a human decision.
 
 1. Safe boundary: tasks are collected or can keep running (the new owner collects them), review decisions are recorded.
 2. The current owner runs `/gsd-pause-work`: GSD writes `.planning/HANDOFF.json` and `.continue-here.md` and commits them.
