@@ -5,7 +5,7 @@ quota [--refresh]                 normalized quota per agent
 route ROLE [--heavy|--light]      routing decision with reason (no side effects)
 prefer ROLE AGENT|-               manual override for the next routing of ROLE
 dispatch TASK.md --role R --id ID start a worker (execute -> own worktree)
-wait [--timeout S]                wait for worker news (hc wait --children any)
+wait [--timeout S]                manual diagnostic wait for a Herdr event
 collect ID [--keep-worker]        judge durable evidence, stop the worker
 status [--json]                   tasks, quotas, routing
 watch                             live dashboard + publisher (run in an hc terminal)
@@ -95,6 +95,8 @@ def cmd_prefer(cfg, a):
 
 
 def cmd_dispatch(cfg, a):
+    if os.environ.get("HC_TERMINAL_ID"):
+        cmd_hub(cfg, argparse.Namespace(op="start"), ensuring=True)
     heavy = True if a.heavy else (False if a.light else None)
     wt = True if a.worktree else (False if a.no_worktree else None)
     t = tasks.dispatch(
@@ -115,10 +117,15 @@ def cmd_dispatch(cfg, a):
         print(f"reason: {t['reason']}")
         print(f"report: {t['report']}")
         if not t["startup"]["ok"]:
-            print(f"startup blocked: {t['startup']['why']}")
+            print(f"startup: {t['startup']['why']}")
             if t["startup"].get("prompt"):
                 print(f"When the terminal is ready, send: {t['startup']['prompt']}")
-        print("next: orch.py wait   then   orch.py collect " + t["id"])
+        if t["notify_owner"]:
+            print("After launching any other independent workers, "
+                  "end this turn and leave the owner terminal open. "
+                  f"On the hub's notification: orch.py collect {t['id']}")
+        else:
+            print("No Herdr owner terminal registered. Manual recovery: orch.py collect " + t["id"])
     return 0
 
 
@@ -219,7 +226,7 @@ def cmd_gsd_cross_ai(cfg, a):
         prompt + "\n\nWrite the report as a GSD SUMMARY.md for this plan "
         "(title heading, what was done, files changed, verification).\n"
     )
-    t = tasks.dispatch(cfg, task, "execute", tid, worktree=False)
+    t = tasks.dispatch(cfg, task, "execute", tid, worktree=False, notify_owner=False)
     print(f"cross-ai: {t['agent']} in {t['terminal']}", file=sys.stderr)
     while True:
         if tasks.report_sentinel(t["report"]):
@@ -382,7 +389,7 @@ def cmd_watch(cfg, a):
     dirty.set()
 
     relevant = {"created", "lost", "restarted", "finished", "removed", "status", "turn", "labels"}
-    watched = set()  # addresses of worker and tool terminals
+    watched = set()  # worker, tool and waiting owner terminals
 
     def on_event(msg):
         p = msg.get("params") or {}
@@ -397,8 +404,7 @@ def cmd_watch(cfg, a):
         # them would make hubs wake each other forever.
         if p.get("type") == "labels" and "orch.hub" in ((p.get("data") or {}).get("labels") or {}):
             return
-        # Status changes of unrelated terminals (the owner's own session, other
-        # programs) do not change this snapshot.
+        # Ignore status changes of terminals unrelated to current work.
         if p.get("type") in ("status", "turn") and p.get("terminal") not in watched:
             return
         dirty.set()
@@ -467,6 +473,12 @@ def cmd_watch(cfg, a):
             s["planning"] = plan
             rev += 1
             state.publish(cfg, s, hub=hub, rev=rev)
+            if a.hub:
+                watched.update(
+                    t["parent"] for t in s["tasks"]
+                    if t["state"] == "running" and t.get("notify_owner")
+                )
+                tasks.notify_reports(cfg, s["tasks"], terms)
         except Exception as e:  # noqa: BLE001 - one bad snapshot must not stop the hub
             print(f"publish failed: {e!r}", file=sys.stderr)
             continue
@@ -487,15 +499,16 @@ def hub_stale(cfg, address):
     return any(f.stat().st_mtime > started for f in files)
 
 
-def cmd_hub(cfg, a):
+def cmd_hub(cfg, a, *, ensuring=False):
     """Run `watch` in its own hidden herdr-core terminal: the publisher that
     feeds the Herdr App mod. It outlives the owner session."""
     name = f"orch-{config.project_name(cfg)}"[:32]
     live = [t for t in hc.ls() if t.get("name") == name]
     # The hub reads configuration and code once: after `owner set`, a local
     # override or a template update it would keep publishing the old state.
+    stream = sys.stderr if ensuring else sys.stdout
     if a.op == "start" and live and hub_stale(cfg, live[0]["address"]):
-        print(f"{name}: configuration or code changed since start; restarting")
+        print(f"{name}: configuration or code changed since start; restarting", file=stream)
         a.op = "restart"
     if a.op in ("stop", "restart"):
         for t in live:
@@ -506,8 +519,9 @@ def cmd_hub(cfg, a):
             return 0
         live = []
     if live:
-        advice.update(cfg, force=True)
-        print(f"{name} already running as {live[0]['address']}")
+        if not ensuring:
+            advice.update(cfg, force=True)
+            print(f"{name} already running as {live[0]['address']}")
         return 0
     # No herdr.space label: the hub stays out of the App's tabs; the Mission
     # Control panel is its view.
@@ -523,8 +537,13 @@ def cmd_hub(cfg, a):
         "watch",
         "--hub",
     ]
-    r = hc.run(argv, name, cfg["root"], labels, no_parent=True)
-    print(f"{name} started as {r.get('address') if isinstance(r, dict) else r}")
+    try:
+        r = hc.run(argv, name, cfg["root"], labels, no_parent=True)
+    except hc.HCError as exc:
+        if exc.kind != "name_taken" or not any(t.get("name") == name for t in hc.ls()):
+            raise
+        return 0  # another session started the same hub
+    print(f"{name} started as {r.get('address') if isinstance(r, dict) else r}", file=stream)
     return 0
 
 

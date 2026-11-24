@@ -74,8 +74,9 @@ command is obsolete, and only herdr-core `hc` is required. Moving from v0.1: [MI
 3. Start workers only with `orch.py dispatch`, never with a raw `hc run` and never with `herdr ...`. `dispatch`
    already does what herdr-core needs: background start under the owner terminal, `--outlive-parent`,
    the caller's environment through `env`, `codex --no-daemon`, the space label and the start check.
-4. Wait with `orch.py wait` (it wraps `hc wait --children any`); a timeout is a check-in, wait again.
-   No `sleep` and no polling with `hc get`, `ps` or `tail`.
+4. Launch independent workers in parallel as needed. Check startup, end the owner turn and
+   leave the Herdr tab open. The hub resumes the owner when reports are ready.
+   Use `orch.py wait` for manual diagnosis.
 5. `orch.py collect <id>`: success is the report sentinel plus, for execution, commits on a clean branch;
    the worker status `done` or `idle` is not success. The full loop: [orch-workers](.agents/skills/orch-workers/SKILL.md).
 
@@ -162,7 +163,7 @@ and bootstrap refuses to run until the conflicts are resolved. Then `/gsd-onboar
 python3 scripts/orch.py quota                      # live quotas of all agents
 python3 scripts/orch.py route execute              # who gets a heavy task and why
 python3 scripts/orch.py dispatch task.md --role execute --id 14-01
-python3 scripts/orch.py wait                       # next worker event
+# End the turn here. Herdr sends the dispatch ID when the report is ready.
 python3 scripts/orch.py collect 14-01              # evidence, commit, stop the worker
 python3 scripts/orch.py worktree merge 14-01
 ```

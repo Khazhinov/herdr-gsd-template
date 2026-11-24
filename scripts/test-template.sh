@@ -16,5 +16,6 @@ python3 ./tests/test_session_start.py
 echo "== routing, quotas, worker lifecycle (fake herdr-core) =="
 python3 ./tests/test_orch.py
 python3 ./tests/test_advice.py
+python3 -m unittest discover -s tests -p test_report_notifications.py
 
 echo "template test suite: PASS"

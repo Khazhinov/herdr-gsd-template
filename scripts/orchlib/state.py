@@ -241,6 +241,8 @@ def compose(cfg, quotas=None, with_planning=True, terminals=None):
                     "agent",
                     "state",
                     "terminal",
+                    "parent",
+                    "notify_owner",
                     "name",
                     "branch",
                     "report",
@@ -253,6 +255,7 @@ def compose(cfg, quotas=None, with_planning=True, terminals=None):
                     "reason",
                 )
             }
+            | {"startup_ok": (t.get("startup") or {}).get("ok")}
             for t in tasks.refresh(cfg, terms)
         ],
         "tools": tools,
