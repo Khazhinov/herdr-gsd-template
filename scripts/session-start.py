@@ -36,8 +36,11 @@ def start(root=ROOT, cwd=None):
     except (OSError, subprocess.TimeoutExpired) as error:
         report['detail'] = str(error)
     target = root / '.orchestration/runtime/session-start.json'
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
+    except OSError as error:
+        print(f"Could not save owner startup status: {error}", file=sys.stderr)
     return report
 
 
@@ -51,7 +54,7 @@ def main():
             payload = json.load(sys.stdin)
         except (ValueError, OSError):
             pass
-    report = start(cwd=payload.get('cwd'))
+    report = start(cwd=payload.get('cwd') if isinstance(payload, dict) else None)
     if args.hook:
         context = CONTEXT + f" SessionStart has already attempted owner startup: {report['status']}."
         if report['status'] == 'unavailable':

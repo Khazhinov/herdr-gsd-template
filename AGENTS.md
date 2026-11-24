@@ -40,4 +40,8 @@ and `.agents/skills/orch-workers/SKILL.md`.
 
 ## Owner startup without a special prompt
 
-For an owner session at the repository root, restore `.planning/STATE.md` and run `python3 scripts/session-start.py` once if the SessionStart hook has not already done so. The hook starts the idempotent status hub and supplies the project-entry context. Follow the user's task through the project workflow without requiring them to repeat bootstrap instructions. Workers follow their contract and do not run owner startup. Project-local Codex configuration sets daemon_auto_start=false, so an ordinary `codex` command keeps its own terminal environment.
+For an owner session at the repository root, restore `.planning/STATE.md` and run `python3 scripts/session-start.py` once if the SessionStart hook has not already done so. The hook starts the idempotent status hub and supplies the project-entry context. Follow the user's task through the project workflow without requiring them to repeat bootstrap instructions. Workers follow their contract and do not run owner startup. Project-local Codex configuration defaults to daemon_auto_start=false to keep an ordinary `codex` command in its own terminal environment.
+
+## Upstream maintenance for shared agent tooling
+
+When using this template, report reproducible defects and compatibility gaps to the maintainer. Open a contribution only when the user explicitly authorizes publishing it. Use a clean branch, check for an existing proposal, and include the problem, reproduction, expected and actual behavior, proposed change, compatibility and validation. If publication is unavailable, keep the patch locally and report the blocker. Follow the publication safety rules above. Consuming projects decide their own contribution policy.

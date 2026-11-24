@@ -58,7 +58,7 @@ class SessionStartup(unittest.TestCase):
                 subprocess.run([sys.executable, str(root / 'scripts/reconcile-runtime-config.py')], check=True, capture_output=True)
                 snapshots.append([(root / p).read_text() for p in ('.codex/config.toml', '.codex/hooks.json', '.claude/settings.json')])
             self.assertEqual(*snapshots)
-            self.assertIn('daemon_auto_start = false', snapshots[0][0])
+            self.assertIn('daemon_auto_start = true', snapshots[0][0])
             self.assertIn('[mcp_servers.example]', snapshots[0][0])
             for text in snapshots[0][1:]:
                 self.assertIn('existing-hook', text)

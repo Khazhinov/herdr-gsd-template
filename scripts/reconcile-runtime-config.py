@@ -14,6 +14,7 @@ import json
 import re
 import shlex
 import sys
+import tomllib
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -80,29 +81,35 @@ else:
         )
         codex.write_text(text.rstrip() + "\n")
 
-# Project-local defaults: plain `codex` keeps its own terminal environment.
-# The installed CLI exposes daemon_auto_start via `codex features list`.
+# Prefer the terminal-local app server when the project has no explicit choice.
 text = codex.read_text()
-if re.search(r"(?m)^daemon_auto_start\s*=", text):
-    text = re.sub(r"(?m)^daemon_auto_start\s*=.*$", "daemon_auto_start = false", text)
-elif re.search(r"(?m)^\[features\]\s*$", text):
-    text = re.sub(r"(?m)^\[features\]\s*$", "[features]\ndaemon_auto_start = false", text, count=1)
-else:
-    text += "\n[features]\ndaemon_auto_start = false\nhooks = true\n"
-codex.write_text(text)
+features = tomllib.loads(text).get("features", {})
+if "daemon_auto_start" not in features:
+    table = r'(?m)^\s*\[features\][ \t]*(?:#[^\n]*)?$'
+    if re.search(table, text):
+        updated = re.sub(table, lambda match: match.group() + "\ndaemon_auto_start = false", text, count=1)
+    else:
+        updated = text + "\n[features]\ndaemon_auto_start = false\n"
+    try:
+        tomllib.loads(updated)
+    except tomllib.TOMLDecodeError:
+        # An inline features table is already sealed in TOML. Keep it intact.
+        print("note: set features.daemon_auto_start to false in the existing Codex config if needed")
+    else:
+        codex.write_text(updated)
 
 # Preserve generated/vendor hooks and install our idempotent startup handler.
 startup = "python3 " + shlex.quote(str(root / "scripts/session-start.py")) + " --hook"
 def add_startup(data):
     groups = data.setdefault("hooks", {}).setdefault("SessionStart", [])
     for group in groups:
-        group["hooks"] = [h for h in group.get("hooks", []) if "scripts/session-start.py" not in h.get("command", "")]
+        group["hooks"] = [h for h in group.get("hooks", []) if h.get("command") != startup]
     groups[:] = [group for group in groups if group.get("hooks")]
     groups.append({"hooks": [{"type": "command", "command": startup, "timeout": 40}]})
     return data
 
 hook_path = root / ".codex/hooks.json"
-hook_data = json.loads(hook_path.read_text()) if hook_path.exists() else {}
+hook_data = json.loads(hook_path.read_text() or "{}") if hook_path.exists() else {}
 hook_path.write_text(json.dumps(add_startup(hook_data), indent=2) + "\n")
 data = json.loads(settings.read_text()) if settings.exists() else {}
 settings.write_text(json.dumps(add_startup(data), indent=2) + "\n")

@@ -523,7 +523,7 @@ def dispatch(
         # carry PATH, proxies and locale explicitly.
         w = cfg["routing"].get("workers", {})
         keep = w.get("pass_env", DEFAULT_PASS_ENV)
-        argv = ["env", "ORCH_WORKER=1", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ]] + argv
+        argv = ["env", *[f"{k}={os.environ[k]}" for k in keep if k in os.environ], "ORCH_WORKER=1"] + argv
         first = f"Read the task contract {contract} and carry it out exactly. Task id {tid}."
         if a.get("prompt", "arg") == "arg":
             argv.append(first)
@@ -549,8 +549,13 @@ def dispatch(
         if a.get("prompt") == "send":
             startup = startup_check(name, seconds=120, wait_ready=True)
             if startup["ok"]:
-                hc.send(name, first)
-            else:
+                try:
+                    hc.send(name, first)
+                except hc.HCError as error:
+                    if error.kind != "blocked":
+                        raise
+                    startup = {"ok": False, "why": str(error)}
+            if not startup["ok"]:
                 startup["prompt"] = first
         else:
             startup = startup_check(name)
